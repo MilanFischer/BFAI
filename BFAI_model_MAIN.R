@@ -14,12 +14,16 @@ source("./src/colors.R")
 source("./src/model_specification.R")
 source("./src/corellation_filter.R")
 source("./src/boruta.R")
+source("./src/files_manage.R")
 
 # Define the target variable
 target <- "log_BFA1000"
 
 # Choose whether to use country as the predictor
 use_country <- TRUE
+
+# Set and create output path
+out_path <- create_next_output_dir()
 
 # Separate calibration and verification datasets
 calibration_years <- seq(1990, 2022)[(seq(1990, 2022) - 1990) %% 3 != 2]  # 1st and 2nd years in each 3-year block
@@ -32,7 +36,7 @@ registerDoParallel(cl)
 
 # Load data and handle missing values
 # Ensure proper handling of missing values
-data <- read_excel("./BFAI_inputs.xlsx", 
+data <- read_excel("./inputs/BFAI_inputs.xlsx", 
                    sheet = "inputs", 
                    na = c("", "NA", "N/A", "#N/A"))
 
@@ -55,23 +59,48 @@ calibration_data <- clean_data |>
 verification_data <- clean_data |>
   filter(Year %in% verification_years)
 
-# Remove highly correlated predictors 
-cor_filtered_cols <- corr_filter(calibration_data, 0.9)
+config_path <- file.path(out_path, "config.yml")
 
-boruta_filtered_cols <- get_boruta_predictors(calibration_data |> select(all_of(cor_filtered_cols)),
-                      target = target, use_country = use_country, min_freq = 5, v = 10, seed = 1234)
-
-calibration_data <- calibration_data |> select(all_of(boruta_filtered_cols))
-verification_data <- verification_data |> select(all_of(boruta_filtered_cols))
-
-predictors <- setdiff(boruta_filtered_cols, c("Year", target))
+if (file.exists(config_path)) {
+  config <- yaml::read_yaml(config_path)
+  
+  # Assign to global env or current env as needed
+  predictors <- config$predictors
+  seed <- config$seed
+  
+  message("Loaded config from: ", config_path)
+} else {
+  
+  message("No config.yml found. Generating new config.")
+  
+  seed <- 1234
+  
+  # Remove highly correlated predictors 
+  cor_filtered_cols <- corr_filter(calibration_data, 0.9)
+  
+  boruta_filtered_cols <- get_boruta_predictors(calibration_data |> select(all_of(cor_filtered_cols)),
+                                                target = target, use_country = use_country, min_freq = 5, v = 10, seed = 1234)
+  
+  calibration_data <- calibration_data |> select(all_of(boruta_filtered_cols))
+  verification_data <- verification_data |> select(all_of(boruta_filtered_cols))
+  
+  predictors <- setdiff(boruta_filtered_cols, c("Year", target))
+  
+  # Save predictors and seed to config.yml
+  config <- list(
+    predictors = predictors,
+    seed = seed
+  )
+  
+  write_yaml(config, config_path)
+  message("Saved new config to: ", config_path)
+}
 
 # Create a formula dynamically
 formula <- as.formula(paste(target, "~", paste(predictors, collapse = " + ")))
 
 if (use_country == TRUE) {
   no_pre_proc_rec <- recipe(formula, data = calibration_data) |>
-    update_role(Country, new_role = "ID") |>          # Keep Country column for metrics
     step_nzv(all_predictors()) |>
     step_lencode_glm(Country, outcome = target) 
 } else {
@@ -84,7 +113,7 @@ if (use_country == TRUE) {
 ###############################################################
 
 # Cross-validation folds
-set.seed(1234)
+set.seed(seed)
 cv_folds <- vfold_cv(calibration_data, v = 10, strata = all_of(target))
 
 # Extend the recipe to normalize numeric predictors
@@ -157,7 +186,7 @@ grid_ctrl <-
 grid_results <-
   all_workflows |>
   workflow_map(
-    seed = 1508,
+    seed = seed,
     resamples = cv_folds,
     grid = 50, # Reduced grid size for debugging, otherwise set >50
     control = grid_ctrl
@@ -177,7 +206,7 @@ autoplot(
   select_best = TRUE     # <- one point per workflow
 ) +
   geom_text(aes(y = mean - 0.2, label = wflow_id), angle = 90, hjust = 1) +
-  lims(y = c(0.6, 1.8)) +
+  lims(y = c(0.6, 1.4)) +
   theme(legend.position = "none")
 
 race_ctrl <-
@@ -309,12 +338,12 @@ print(rmse_results)
 
 View(rmse_results)
 
-set.seed(2001)
+set.seed(seed+1)
 ens <- blend_predictions(models_stack)
 
 autoplot(ens)
 
-set.seed(2002)
+set.seed(seed+2)
 ens <- blend_predictions(models_stack, penalty = 10^seq(-2, -0.5, length = 20))
 
 autoplot(ens)
@@ -326,9 +355,9 @@ stack_rank <- autoplot(ens, "weights") +
 
 # Save the plot
 if(use_country == TRUE){
-  plot_name <- './plots/stack_rank_ensemble_country.png'
+  plot_name <- paste0(out_path, "/stack_rank_ensemble_country.png")
 }else{
-  plot_name <- './plots/stack_rank_ensemble.png'
+  plot_name <- paste0(out_path, "/stack_rank_ensemble.png")
 }
 ggsave(plot_name, plot = stack_rank, width = 1 * 140, height = 1 * 130, dpi = 600, units = 'mm')
 
@@ -464,9 +493,9 @@ main_plot_ens_pred <- ggplot(ens_model_pred_df, aes(x = log_BFA1000, y = .pred, 
 
 # Save the plot
 if(use_country == TRUE){
-  plot_name <- './plots/ensemble_models_predictions_log-scale_country.png'
+  plot_name <- paste0(out_path, "/ensemble_models_predictions_log-scale_country.png")
 }else{
-  plot_name <- './plots/ensemble_models_predictions_log-scale.png'
+  plot_name <- paste0(out_path,"/ensemble_models_predictions_log-scale.png")
 }
 ggsave(plot_name, plot = main_plot_ens_pred, width = 1 * 140, height = 1 * 130, dpi = 600, units = 'mm')
 
@@ -629,15 +658,15 @@ print(final_p)
 
 # Save the plot
 if(use_country == TRUE){
-  plot_name <- './plots/all_models_predictions_log-scale_country.png'
+  plot_name <- paste0(out_path, "/all_models_predictions_log-scale_country.png")
 }else{
-  plot_name <- './plots/all_models_predictions_log-scale.png'
+  plot_name <- paste0(out_path, "/all_models_predictions_log-scale.png")
 }
 ggsave(plot_name, plot = final_p, width = 4 * 120, height = 3 * 110, dpi = 600, units = 'mm')
 
 #-------------------------------------------------------------------------------
 # Load data
-data_scenarios <- read_csv("./BFI_CR_avg_indicators.csv")
+data_scenarios <- read_csv("./inputs/BFAI_CZE_avg_indicators.csv")
 
 # Pivot longer to tidy format
 data_scenarios <- data_scenarios |> 
@@ -767,13 +796,13 @@ scenario_p <- ggplot(final_prediction, aes(x = Period, y = predicted_BFA1000, co
     axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis text for clarity
     strip.text = element_text(face = "bold")            # Bold facet titles
   ) +
-  coord_cartesian(ylim = c(0, 1))
+  coord_cartesian(ylim = c(0, round(max(final_prediction$predicted_BFA1000), 1)))
 
 # Save the plot
 if(use_country == TRUE){
-  plot_name <- './plots/all_models_predictions_for_scenarios_country.png'
+  plot_name <- paste0(out_path, "/all_models_predictions_for_scenarios_country.png")
 }else{
-  plot_name <- './plots/all_models_predictions_for_scenarios.png'
+  plot_name <- paste0(out_path, "/all_models_predictions_for_scenarios.png")
 }
 ggsave(plot_name, plot = scenario_p, width = 3 * 140, height = 2 * 120, dpi = 600, units = 'mm')
 
@@ -836,9 +865,8 @@ scenario_p <- ggplot(ens_scen, aes(x = Period, y = predicted_BFA1000, color = Cl
 
 # Save the plot
 if(use_country == TRUE){
-  plot_name <- './plots/all_models_predictions_for_scenarios_ensemble_mean_country.png'
+  plot_name <- paste0(out_path, "/all_models_predictions_for_scenarios_ensemble_mean_country.png")
 }else{
-  plot_name <- './plots/all_models_predictions_for_scenarios_ensemble_mean.png'
+  plot_name <- paste0(out_path, "/all_models_predictions_for_scenarios_ensemble_mean.png")
 }
 ggsave(plot_name, plot = scenario_p, width = 1 * 140, height = 1 * 120, dpi = 600, units = 'mm')
-

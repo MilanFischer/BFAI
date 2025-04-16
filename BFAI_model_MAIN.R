@@ -20,7 +20,7 @@ source("./src/files_manage.R")
 target <- "log_BFA1000"
 
 # Choose whether to use country as the predictor
-use_country <- TRUE
+use_country <- FALSE
 
 # Set and create output path
 out_path <- create_next_output_dir()

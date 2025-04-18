@@ -1,0 +1,20 @@
+predictors:
+- Country
+- AWD0_40_sum_3
+- AWR0_40_u30_5
+- Broadleaved
+- DFM10H_u10_3
+- FWI_3_4
+- FWI_3_5
+- FWI_4_4
+- FWI_6_1
+- FWI_FD_4
+- FWI_FD_5
+- Pines
+- VPD_1
+- VPD_4
+- AWD0_40_sum_4
+use_country: yes
+target: log_BFA1000
+metamodel: cubist
+seed: 1234.0

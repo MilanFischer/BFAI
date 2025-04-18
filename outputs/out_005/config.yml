@@ -1,0 +1,13 @@
+predictors:
+- Country
+- Broadleaved
+- FWI_3_5
+- FWI_6_1
+- Pines
+- VPD_1
+- AWP0_40_S2_1
+use_country: yes
+target: log_BFA1000
+cor_thresh: 0.75
+metamodel: no
+seed: 1234.0

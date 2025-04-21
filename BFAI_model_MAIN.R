@@ -5,6 +5,9 @@
 # https://www.tidymodels.org/find/recipes/
 ################################################################################
 
+# Ideas
+# If use_country == TRUE -> exclude broadleaved, coniferous and pines – done
+
 for(run_ID in 3:15){
   # Clear workspace
   rm(list = setdiff(ls(), "run_ID"))
@@ -51,7 +54,11 @@ for(run_ID in 3:15){
   # Replace infinite values with NA and drop them
   clean_data <- data |> 
     mutate(across(where(is.numeric), ~na_if(., Inf))) |>  # Replace Inf with NA
-    drop_na() 
+    drop_na()
+  
+  if(use_country == TRUE){
+    clean_data <- clean_data |> select(-c("Pines", "Conifers", "Broadleaved"))
+  }
   
   # Derive the original variable name from the target
   original_var <- sub("^log_", "", target)
@@ -744,9 +751,9 @@ for(run_ID in 3:15){
   cze_summary <- clean_data |> 
     filter(Country == "CZE") |> 
     summarise(
-      Pines = mean(Pines, na.rm = TRUE),
-      Conifers = mean(Conifers, na.rm = TRUE),
-      Broadleaved = mean(Broadleaved, na.rm = TRUE),
+      # Pines = mean(Pines, na.rm = TRUE),
+      # Conifers = mean(Conifers, na.rm = TRUE),
+      # Broadleaved = mean(Broadleaved, na.rm = TRUE),
       BFA1000_1991_2020 = exp(mean(log_BFA1000[Year %in% 1991:2020], na.rm = TRUE))
     )
   
@@ -754,9 +761,9 @@ for(run_ID in 3:15){
   data_scenarios_wide <- data_scenarios_wide |> 
     mutate(
       Country = "CZE",
-      Pines = cze_summary$Pines,
-      Conifers = cze_summary$Conifers,
-      Broadleaved = cze_summary$Broadleaved,
+      # Pines = cze_summary$Pines,
+      # Conifers = cze_summary$Conifers,
+      # Broadleaved = cze_summary$Broadleaved,
       BFA1000_1991_2020 = cze_summary$BFA1000_1991_2020
     )
   
@@ -922,6 +929,3 @@ for(run_ID in 3:15){
   }
   ggsave(plot_name, plot = scenario_p, width = 1 * 140, height = 1 * 120, dpi = 600, units = 'mm')
 }
-
-
-

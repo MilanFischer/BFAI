@@ -1,0 +1,12 @@
+predictors:
+- Broadleaved
+- VPD_1
+- Country
+- DFM10H_u10_3
+- Pines
+- VPD_4
+use_country: yes
+target: log_BFA1000
+cor_thresh: 0.9
+metamodel: no
+seed: 1234.0

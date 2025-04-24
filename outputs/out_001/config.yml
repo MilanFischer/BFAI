@@ -14,4 +14,8 @@ predictors:
 - VPD_1
 - VPD_4
 - AWD0_40_sum_4
+use_country: yes
+target: log_BFA1000
+cor_thresh: 0.9
+metamodel: no
 seed: 1234.0

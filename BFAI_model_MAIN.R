@@ -8,7 +8,8 @@
 # Ideas
 # If use_country == TRUE -> exclude broadleaved, coniferous and pines – done
 
-for(run_ID in 3:15){
+# for(run_ID in 3:15){
+for(run_ID in 1:32){
   # Clear workspace
   rm(list = setdiff(ls(), "run_ID"))
   
@@ -34,7 +35,8 @@ for(run_ID in 3:15){
   cor_thresh = 0.9
   
   # Set and create output path
-  out_path <- create_next_output_dir()
+  # out_path <- create_next_output_dir()
+  out_path <- paste0("./outputs/out_", sprintf("%03d", run_ID))
   
   # Separate calibration and verification datasets
   calibration_years <- seq(1990, 2022)[(seq(1990, 2022) - 1990) %% 3 != 2]  # 1st and 2nd years in each 3-year block
@@ -56,9 +58,9 @@ for(run_ID in 3:15){
     mutate(across(where(is.numeric), ~na_if(., Inf))) |>  # Replace Inf with NA
     drop_na()
   
-  if(use_country == TRUE){
-    clean_data <- clean_data |> select(-c("Pines", "Conifers", "Broadleaved"))
-  }
+  # if(use_country == TRUE){
+  #   clean_data <- clean_data |> select(-c("Pines", "Conifers", "Broadleaved"))
+  # }
   
   # Derive the original variable name from the target
   original_var <- sub("^log_", "", target)
@@ -81,6 +83,15 @@ for(run_ID in 3:15){
     
     # Assign to global env or current env as needed
     predictors <- config$predictors
+    
+    use_country <- config$use_country
+    
+    target <- config$target
+    
+    cor_thresh <- config$cor_thresh
+    
+    metamodel <- config$metamodel
+    
     seed <- config$seed
     
     message("Loaded config from: ", config_path)
@@ -751,9 +762,9 @@ for(run_ID in 3:15){
   cze_summary <- clean_data |> 
     filter(Country == "CZE") |> 
     summarise(
-      # Pines = mean(Pines, na.rm = TRUE),
-      # Conifers = mean(Conifers, na.rm = TRUE),
-      # Broadleaved = mean(Broadleaved, na.rm = TRUE),
+      Pines = mean(Pines, na.rm = TRUE),
+      Conifers = mean(Conifers, na.rm = TRUE),
+      Broadleaved = mean(Broadleaved, na.rm = TRUE),
       BFA1000_1991_2020 = exp(mean(log_BFA1000[Year %in% 1991:2020], na.rm = TRUE))
     )
   
@@ -761,9 +772,9 @@ for(run_ID in 3:15){
   data_scenarios_wide <- data_scenarios_wide |> 
     mutate(
       Country = "CZE",
-      # Pines = cze_summary$Pines,
-      # Conifers = cze_summary$Conifers,
-      # Broadleaved = cze_summary$Broadleaved,
+      Pines = cze_summary$Pines,
+      Conifers = cze_summary$Conifers,
+      Broadleaved = cze_summary$Broadleaved,
       BFA1000_1991_2020 = cze_summary$BFA1000_1991_2020
     )
   
@@ -928,4 +939,28 @@ for(run_ID in 3:15){
     plot_name <- paste0(out_path, "/all_models_predictions_for_scenarios_ensemble_mean.png")
   }
   ggsave(plot_name, plot = scenario_p, width = 1 * 140, height = 1 * 120, dpi = 600, units = 'mm')
+  
+  # Extract RMSEs from models
+  rmse_out_all_models <- rmse_values_combined |>
+    extract(combined_label,
+            into = c("calibration", "verification"),
+            regex = "calibration</sub> = ([0-9.]+)<br>RMSE<sub>verification</sub> = ([0-9.]+)",
+            convert = TRUE) |>
+    select(model, calibration, verification)
+  
+  # Extract and reshape ensemble RMSEs
+  ensemble_row <- metrics_values |>
+    extract(metric_label,
+            into = c("calibration", "verification"),
+            regex = "RMSE == ([0-9.]+) ~ .* R\\^2 == ([0-9.]+)",
+            convert = TRUE) |>
+    select(dataset, calibration) |>
+    pivot_wider(names_from = dataset, values_from = calibration) |>
+    mutate(model = "ensemble") |>
+    select(model, calibration, verification)
+  
+  # Combine all RMSEs
+  error_stat <- bind_rows(rmse_out_all_models, ensemble_row)
+  
+  write_csv(error_stat, paste0(out_path, "/error_stat.csv"))
 }

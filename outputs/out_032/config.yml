@@ -1,0 +1,10 @@
+# Predictors based on Emil's tests with GLM model
+predictors:
+- Country
+- AWR0_10_u30_2
+- FWI_5_1
+use_country: yes
+target: log_BFA1000
+cor_thresh: no
+metamodel: no
+seed: 1234.0

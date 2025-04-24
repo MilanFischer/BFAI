@@ -7,9 +7,13 @@
 
 # Ideas
 # If use_country == TRUE -> exclude broadleaved, coniferous and pines – done
+# Show correlation matrix of predictors for 001 and 033
+# Add mean line for future prediction figure
+# Ask for annual data
+# Can we get additional countries? e.g. HRV
 
 # for(run_ID in 3:15){
-for(run_ID in 1:32){
+for(run_ID in 1:33){
   # Clear workspace
   rm(list = setdiff(ls(), "run_ID"))
   

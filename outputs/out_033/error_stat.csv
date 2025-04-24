@@ -1,0 +1,14 @@
+model,calibration,verification
+CART_bagged,0.43,0.93
+Cubist,0.87,0.9
+MARS,0.99,0.89
+RF,0.71,0.87
+SVM_poly,1,0.9
+SVM_radial,0.99,0.91
+bart,0.88,0.9
+boosting,0.83,0.89
+full_quad_linear_reg,0.94,1.03
+glm,0.99,0.89
+neural_network,0.99,0.89
+svm_linear,1,0.9
+ensemble,0.92,0.89

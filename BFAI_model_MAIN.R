@@ -780,7 +780,7 @@ for(run_ID in 1:33){
   #-------------------------------------------------------------------------------
   
   
-  verification_data |> 
+  calibration_data |> 
     filter(Year %in% 1991:2020, Country == "CZE") |> 
     pull(log_BFA1000) |> 
     mean() |> 
@@ -930,7 +930,7 @@ for(run_ID in 1:33){
     
     # Reference line
     geom_hline(
-      aes(yintercept = BFA1000_1991_2020, linetype = "Reference (1991–2020)"),
+      aes(yintercept = BFA1000_1991_2020, linetype = "Observed (1991–2020)"),
       data = final_prediction |> filter(Period == "1991-2020"),
       color = "#2b2b2b", size = 0.8
     ) +
@@ -960,8 +960,8 @@ for(run_ID in 1:33){
     
     # Linetype legend
     scale_linetype_manual(
-      # values = c("Reference (1991–2020)" = "dashed", "Model trend" = "solid"),
-      values = c("Ensemble trend" = "solid"),
+      values = c("Observed (1991–2020)" = "dashed", "Ensemble trend" = "solid"),
+      # values = c("Ensemble trend" = "solid"),
       name = NULL,
       guide = guide_legend(
         override.aes = list(
@@ -1075,7 +1075,7 @@ for(run_ID in 1:33){
     
     # Reference line
     geom_hline(
-      aes(yintercept = BFA1000_1991_2020, linetype = "Reference (1991–2020)"),
+      aes(yintercept = BFA1000_1991_2020, linetype = "Observed (1991–2020)"),
       data = final_prediction |> filter(Period == "1991-2020"),
       color = "#2b2b2b", size = 0.8
     ) +
@@ -1101,7 +1101,7 @@ for(run_ID in 1:33){
     
     # Linetype legend for both lines
     scale_linetype_manual(
-      values = c("Reference (1991–2020)" = "dashed", "Ensemble trend" = "solid"),
+      values = c("Observed (1991–2020)" = "dashed", "Ensemble trend" = "solid"),
       # values = c("Ensemble trend" = "solid"),
       name = NULL,
       guide = guide_legend(

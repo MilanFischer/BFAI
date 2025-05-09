@@ -14,7 +14,7 @@ ensemble_metrics <- map_dfr(file_paths, function(path) {
 
 # Find the file with the lowest verification RMSE for the ensemble
 best_file <- ensemble_metrics |> 
-  slice_min(order_by = verification, n = 1)
+  slice_min(order_by = verification, n = 10)
 
 # View the best file
 print(best_file)

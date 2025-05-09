@@ -9,8 +9,8 @@
 # If use_country == TRUE -> exclude broadleaved, coniferous and pines – done
 # Show correlation matrix of predictors for 001 and 033
 # Add mean line for future prediction figure
-# Ask for annual data
-# Can we get additional countries? e.g. HRV
+# Ask for annual data – done
+# Can we get additional countries – in the future  yes, we will see how long it will take.
 
 # for(run_ID in 3:15){
 for(run_ID in 1:33){
@@ -184,30 +184,46 @@ for(run_ID in 1:33){
     step_interact(~ all_numeric_predictors():all_numeric_predictors())
   
   # Define a set of workflows without preprocessing
-  no_pre_proc <-
-    workflow_set(
-      preproc = list(simple = no_pre_proc_rec),
-      models = list(MARS = mars_spec, CART = cart_spec, CART_bagged = bag_cart_spec,
-                    RF = rf_spec, boosting = xgb_spec, Cubist = cubist_spec, bart = bart_spec, glm = glm_spec)
+  no_pre_proc <- workflow_set(
+    preproc = list(simple = no_pre_proc_rec),
+    models = list(
+      `Multivariate Adaptive Regression Splines` = mars_spec,
+      `Classification and Regression Trees` = cart_spec,
+      `Bagged Classification and Regression Trees` = bag_cart_spec,
+      `Random Forest` = rf_spec,
+      `Extreme Gradient Boosting` = xgb_spec,
+      `Cubist Regression` = cubist_spec,
+      `Bayesian Additive Regression Trees` = bart_spec,
+      `Generalized Linear Model` = glm_spec
     )
+  )
   
   # Define a set of workflows with normalization
-  normalized <-
-    workflow_set(
-      preproc = list(normalized = normalized_rec),
-      models = list(SVM_radial = svm_r_spec,
-                    SVM_poly = svm_p_spec,
-                    KNN = knn_spec,
-                    neural_network = nnet_spec,
-                    svm_linear = svm_linear_spec)
+  normalized <- workflow_set(
+    preproc = list(normalized = normalized_rec),
+    models = list(
+      `Support Vector Machine (Radial)` = svm_r_spec,
+      `Support Vector Machine (Polynomial)` = svm_p_spec,
+      `K-Nearest Neighbors (Normalized)` = knn_spec,
+      `Artificial Neural Network` = nnet_spec,
+      `Support Vector Machine (Linear)` = svm_linear_spec
     )
+  )
   
   # Define a set of workflows with polynomial and interaction features
-  with_features <-
-    workflow_set(
-      preproc = list(full_quad = poly_rec),
-      models = list(linear_reg = linear_reg_spec, KNN = knn_spec)
-    )
+  poly_models <- list(
+    `Elastic Net Regression` = linear_reg_spec,
+    `K-Nearest Neighbors (Poly Features)` = knn_spec
+  )
+  
+  # Create workflow set
+  with_features <- workflow_set(
+    preproc = list(full_quad = poly_rec),
+    models = poly_models
+  )
+  
+  # Manually assign desired workflow IDs
+  with_features$wflow_id <- names(poly_models)
   
   # Combine all workflow sets into a single set
   all_workflows <- 
@@ -224,11 +240,11 @@ for(run_ID in 1:33){
   
   # Remove any rows where wflow_id contains "KNN"
   all_workflows <- all_workflows |> 
-    filter(!grepl("KNN", wflow_id))
+    filter(!grepl("K-Nearest Neighbors", wflow_id))
   
   # Remove CART
   all_workflows <- all_workflows |> 
-    filter(wflow_id != "CART")
+    filter(wflow_id != "Classification and Regression Trees")
   
   # Final selection
   print(all_workflows)
@@ -412,6 +428,36 @@ for(run_ID in 1:33){
       theme(legend.position = "none") +
       lims(x = c(-0.01, 0.8))
     
+    
+    # Step 1: Extract weights plot data
+    weights_data <- autoplot(ens, "weights")$data
+    
+    # Step 2: Use ens$cols_map to reverse-map model names
+    # Create lookup: every member ID maps to readable name
+    lookup <- purrr::imap_dfr(ens$cols_map, ~ tibble(terms = .x, label = .y))
+    
+    # Step 3: Join and collapse to readable names
+    weights_labeled <- weights_data %>%
+      left_join(lookup, by = "terms") %>%
+      mutate(label = factor(label, levels = unique(label)))  # optional
+    
+    weights_labeled <- weights_labeled %>%
+      arrange(desc(weight)) %>%
+      mutate(member_rank = row_number())  # this will be used as y-axis
+    
+    stack_rank <- ggplot(weights_labeled, aes(x = weight, y = reorder(member_rank, weight))) +
+      geom_col(aes(fill = label)) +
+      geom_text(aes(x = weight + 0.01, label = label), hjust = 0) +
+      theme_bw() +
+      theme(legend.position = "none") +
+      labs(
+        title = paste0("Penalty = ", signif(ens$penalty$penalty, 3)),  # <- Penalty added here
+        x = "Stacking Coefficient",
+        y = "Member"
+      ) +
+      lims(x = c(0, 0.4))
+    
+  
     # Save the plot
     if(use_country == TRUE){
       plot_name <- paste0(out_path, "/stack_rank_ensemble_country.png")
@@ -539,8 +585,8 @@ for(run_ID in 1:33){
     ) +
     labs(
       title = "Observed vs. Predicted Values",
-      x = "Observed log(BFA1000)",
-      y = "Predicted log(BFA1000)",
+      x = "Observed log(BFAI)",
+      y = "Predicted log(BFAI)",
       color = "Country",
       shape = "Country"
     ) +
@@ -632,8 +678,8 @@ for(run_ID in 1:33){
     ) +
     labs(
       title = "Observed vs. Predicted Values",
-      x = "Observed log(BFA1000)",
-      y = "Predicted log(BFA1000)",
+      x = "Observed log(BFAI)",
+      y = "Predicted log(BFAI)",
       color = "Country",
       shape = "Country"
     ) +
@@ -732,6 +778,14 @@ for(run_ID in 1:33){
   ggsave(plot_name, plot = final_p, width = 4 * 120, height = 3 * 110, dpi = 600, units = 'mm')
   
   #-------------------------------------------------------------------------------
+  
+  
+  verification_data |> 
+    filter(Year %in% 1991:2020, Country == "CZE") |> 
+    pull(log_BFA1000) |> 
+    mean() |> 
+    exp()
+  
   # Load data
   data_scenarios <- read_csv("./inputs/BFAI_CZE_avg_indicators.csv")
   
@@ -819,58 +873,129 @@ for(run_ID in 1:33){
     select(predicted_BFA1000, Period, Model, Model_Type, BFA1000_1991_2020) |> 
     rename(Climate_model = Model, ML_model = Model_Type)
   
-  glimpse(final_prediction )
+  glimpse(final_prediction)
   
-  # Update the Climate_model column to replace "Observed" with "Baseline"
-  final_prediction <- final_prediction |> 
-    mutate(Climate_model = ifelse(Climate_model == "Observed", "Baseline", Climate_model))
+  # Map Observed to Baseline and add Period_num
+  final_prediction <- final_prediction |>
+    mutate(
+      Climate_model = if_else(Climate_model == "Observed", "Baseline", Climate_model),
+      Climate_model = factor(
+        Climate_model,
+        levels = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
+                   "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1")
+      ),
+      Period_num = case_when(
+        Period == "1961-1990" ~ 1976,
+        Period == "1981-2010" ~ 1996,
+        Period == "1991-2020" ~ 2006,
+        Period == "2030"      ~ 2030,
+        Period == "2050"      ~ 2050,
+        Period == "2070"      ~ 2070,
+        Period == "2085"      ~ 2085,
+        TRUE ~ NA_real_
+      )
+    )
   
-  # Create the plot with the horizontal line as a separate legend group
-  scenario_p <- ggplot(final_prediction, aes(x = Period, y = predicted_BFA1000, color = Climate_model)) +
-    geom_point(size = 3, alpha = 0.8) +  # Add points
-    facet_wrap(~ ML_model) +             # Facet by ML model
-    scale_x_discrete(                    # Ensure periods are ordered correctly
-      limits = c("1961-1990", "1981-2010", "1991-2020", "2030", "2050", "2070", "2085")
+  # Compute per-ML-model smoothed lines
+  trend_data <- final_prediction |>
+    mutate(period_type = if_else(Period %in% c("1961-1990", "1981-2010", "1991-2020"), "baseline", "future")) |>
+    group_by(ML_model, period_type, Period_num) |>
+    summarise(predicted_BFA1000 = if_else(
+      period_type == "future",
+      mean(predicted_BFA1000, na.rm = TRUE),
+      predicted_BFA1000[1]  # use actual point from baseline
+    ), .groups = "drop") |>
+    group_by(ML_model) |>
+    arrange(Period_num) |>
+    group_modify(~{
+      fit <- loess(predicted_BFA1000 ~ Period_num, data = .x, span = 0.8)
+      smoothed <- data.frame(Period_num = seq(min(.x$Period_num), max(.x$Period_num), length.out = 100))
+      smoothed$predicted_BFA1000 <- predict(fit, newdata = smoothed)
+      smoothed$ML_model <- unique(.x$ML_model)
+      smoothed
+    }) |>
+    ungroup()
+  
+  x_labels <- c(1970, 1990, 2010, 2030, 2050, 2070, 2090)
+  
+  scenario_p <- ggplot(final_prediction, aes(x = Period_num, y = predicted_BFA1000, color = Climate_model)) +
+    
+    # Add ML-model specific smoothed lines
+    geom_line(
+      data = trend_data,
+      aes(x = Period_num, y = predicted_BFA1000, group = ML_model, linetype = "Ensemble trend"),
+      inherit.aes = FALSE,
+      color = "#2b2b2b", size = 1.2, alpha = 0.3
     ) +
-    # Add points for climate models
-    scale_color_manual(
-      values = custom_colors_GCM,            # Apply custom colors
-      breaks = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4", "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1"),
-      name = "Climate Models"
-    ) +
-    # Add a horizontal line as a separate group in the legend
+    
+    # Reference line
     geom_hline(
-      aes(yintercept = BFA1000_1991_2020, linetype = "1991–2020"),  # Map to linetype
+      aes(yintercept = BFA1000_1991_2020, linetype = "Reference (1991–2020)"),
       data = final_prediction |> filter(Period == "1991-2020"),
       color = "#2b2b2b", size = 0.8
     ) +
+    
+    # ML model predictions
+    geom_point(size = 3, alpha = 0.8) +
+    
+    # Facet by ML model
+    facet_wrap(~ ML_model) +
+    
+    # X-axis as real timeline
+    scale_x_continuous(
+      breaks = x_labels,
+      labels = x_labels,
+      limits = c(1968, 2092)
+    ) +
+    
+    # Color legend for Climate Models
+    scale_color_manual(
+      values = custom_colors_GCM,
+      breaks = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
+                 "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1"),
+      name = "Climate data",
+      drop = FALSE,
+      guide = guide_legend(order = 1)
+    ) +
+    
+    # Linetype legend
     scale_linetype_manual(
-      values = c("1991–2020" = "dashed"),   # Define the line style
-      name = "Reference",                   # Set legend title for the line
+      # values = c("Reference (1991–2020)" = "dashed", "Model trend" = "solid"),
+      values = c("Ensemble trend" = "solid"),
+      name = NULL,
       guide = guide_legend(
-        override.aes = list(size = 0.8),    # Adjust line thickness in the legend
-        keywidth = 1.8                        # Make the legend line longer
+        override.aes = list(
+          color = "#2b2b2b",
+          size = c(0.8, 1.2),
+          alpha = c(0.3, 1)
+          # size = c(0.8),
+          # alpha = c(0.3)
+        ),
+        order = 2,
+        keywidth = 1.8
       )
     ) +
+    
+    # Labels and theme
     labs(
-      title = "Predicted BFA1000 Across Climate Models and Machine Learning Models",
-      x = "Period",
-      y = "Predicted BFA1000"
+      title = "Predicted BFAI Across Climate Models and Machine Learning Models",
+      x = "Year",
+      y = "Predicted BFAI"
     ) +
     theme_bw() +
     theme(
-      legend.position = "right",          # Place legend to the right
-      axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis text for clarity
-      strip.text = element_text(face = "bold")            # Bold facet titles
+      legend.position = "right",
+      legend.text = element_text(size = 9),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.title.x = element_text(margin = margin(t = 15)),
+      strip.text = element_text(face = "bold")
     ) +
-    # coord_cartesian(ylim = c(0, round(max(final_prediction$predicted_BFA1000), 1)))
-    coord_cartesian(ylim = c(0, 0.6))
+    coord_cartesian(ylim = c(0.05, 0.35))
   
-  # Save the plot
-  if(use_country == TRUE){
-    plot_name <- paste0(out_path, "/all_models_predictions_for_scenarios_country.png")
-  }else{
-    plot_name <- paste0(out_path, "/all_models_predictions_for_scenarios.png")
+  plot_name <- if (use_country == TRUE) {
+    paste0(out_path, "/all_models_predictions_for_scenarios_country.png")
+  } else {
+    paste0(out_path, "/all_models_predictions_for_scenarios.png")
   }
   ggsave(plot_name, plot = scenario_p, width = 3 * 140, height = 2 * 120, dpi = 600, units = 'mm')
   
@@ -887,62 +1012,134 @@ for(run_ID in 1:33){
     select(predicted_BFA1000, Period, Model, Model_Type, BFA1000_1991_2020) |> 
     rename(Climate_model = Model, ML_model = Model_Type)
   
-  glimpse(ens_scen )
+  glimpse(ens_scen)
   
   # Update the Climate_model column to replace "Observed" with "Baseline"
   ens_scen <- ens_scen |> 
     mutate(Climate_model = ifelse(Climate_model == "Observed", "Baseline", Climate_model))
   
-  
   clean_data |> filter(Year %in% 1991:2020) |> filter(Country == "CZE") |> pull(log_BFA1000) |> mean() |> exp()
   
   final_prediction |> filter(Period == "1991-2020") |> pull(BFA1000_1991_2020)
   
-  # Create the plot with the horizontal line as a separate legend group
-  scenario_p <- ggplot(ens_scen, aes(x = Period, y = predicted_BFA1000, color = Climate_model)) +
-    geom_point(size = 3, alpha = 0.8) +  # Add points
-    scale_x_discrete(                    # Ensure periods are ordered correctly
-      limits = c("1961-1990", "1981-2010", "1991-2020", "2030", "2050", "2070", "2085")
+  # Compute period-wise mean for future periods
+  mean_scenarios <- ens_scen |> 
+    filter(Period %in% c("2030", "2050", "2070", "2085")) |> 
+    group_by(Period) |> 
+    summarize(predicted_BFA1000 = mean(predicted_BFA1000), .groups = "drop")
+  
+  # Get distinct baseline periods
+  baseline_means <- ens_scen |> 
+    filter(Period %in% c("1961-1990", "1981-2010", "1991-2020")) |> 
+    select(Period, predicted_BFA1000) |> 
+    distinct()
+  
+  # Combine for smoothing
+  line_data <- bind_rows(baseline_means, mean_scenarios)
+  
+  # Define numeric positions for each period
+  period_map <- c(
+    "1961-1990" = 1976,
+    "1981-2010" = 1996,
+    "1991-2020" = 2006,
+    "2030"      = 2030,
+    "2050"      = 2050,
+    "2070"      = 2070,
+    "2085"      = 2085
+  )
+  
+  # Apply mapping
+  ens_scen <- ens_scen |> mutate(Period_num = period_map[Period])
+  line_data <- line_data |> mutate(Period_num = period_map[Period])
+  
+  # Fit loess model for smoothed line
+  loess_fit <- loess(predicted_BFA1000 ~ Period_num, data = line_data)
+  smoothed_data <- data.frame(
+    Period_num = seq(min(line_data$Period_num), max(line_data$Period_num), length.out = 100)
+  )
+  smoothed_data$predicted_BFA1000 <- predict(loess_fit, newdata = smoothed_data)
+  
+  # Define desired tick marks and labels for x-axis
+  x_labels <- c(1970, 1990, 2010, 2030, 2050, 2070, 2090)
+  
+  # Create plot
+  scenario_p <- ggplot(ens_scen, aes(x = Period_num, y = predicted_BFA1000, color = Climate_model)) +
+    
+    # Ensemble trend line
+    geom_line(
+      data = smoothed_data,
+      aes(x = Period_num, y = predicted_BFA1000, linetype = "Ensemble trend"),
+      color = "#2b2b2b", size = 1.2, alpha = 0.3,
+      inherit.aes = FALSE
     ) +
-    # Add points for climate models
-    scale_color_manual(
-      values = custom_colors_GCM,            # Apply custom colors
-      breaks = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4", "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1"),
-      name = "Climate Models"
-    ) +
-    # Add a horizontal line as a separate group in the legend
+    
+    # Reference line
     geom_hline(
-      aes(yintercept = BFA1000_1991_2020, linetype = "1991–2020"),  # Map to linetype
+      aes(yintercept = BFA1000_1991_2020, linetype = "Reference (1991–2020)"),
       data = final_prediction |> filter(Period == "1991-2020"),
       color = "#2b2b2b", size = 0.8
     ) +
+    
+    # Model points on top
+    geom_point(size = 3, alpha = 0.8) +
+    
+    # X axis scale
+    scale_x_continuous(
+      breaks = x_labels,
+      labels = x_labels,
+      limits = c(1968, 2092)
+    ) +
+    
+    # Color legend for models
+    scale_color_manual(
+      values = custom_colors_GCM,
+      breaks = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
+                 "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1"),
+      name = "Climate data",
+      guide = guide_legend(order = 1)
+    ) +
+    
+    # Linetype legend for both lines
     scale_linetype_manual(
-      values = c("1991–2020" = "dashed"),   # Define the line style
-      name = "Reference",                   # Set legend title for the line
+      values = c("Reference (1991–2020)" = "dashed", "Ensemble trend" = "solid"),
+      # values = c("Ensemble trend" = "solid"),
+      name = NULL,
       guide = guide_legend(
-        override.aes = list(size = 0.8),    # Adjust line thickness in the legend
-        keywidth = 1.8                        # Make the legend line longer
+        override.aes = list(
+          color = "#2b2b2b",
+          size = c(0.8, 1.2),
+          alpha = c(0.3, 1)
+          # size = c(0.8),
+          # alpha = c(0.3)
+        ),
+        order = 2,
+        keywidth = 1.8
       )
     ) +
+    
+    # Labels and theme
     labs(
-      title = "Emsemble mean model of BFA1000s",
-      x = "Period",
-      y = "Predicted BFA1000"
+      title = "Ensemble mean model of BFAI",
+      x = "Year",
+      y = "Predicted BFAI"
     ) +
+    
     theme_bw() +
     theme(
-      legend.position = "right",          # Place legend to the right
-      axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis text for clarity
-      strip.text = element_text(face = "bold")            # Bold facet titles
+      legend.position = "right",
+      legend.text = element_text(size = 9),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.title.x = element_text(margin = margin(t = 15)),
+      strip.text = element_text(face = "bold")
     )
   
   # Save the plot
-  if(use_country == TRUE){
+  if (use_country == TRUE) {
     plot_name <- paste0(out_path, "/all_models_predictions_for_scenarios_ensemble_mean_country.png")
-  }else{
+  } else {
     plot_name <- paste0(out_path, "/all_models_predictions_for_scenarios_ensemble_mean.png")
   }
-  ggsave(plot_name, plot = scenario_p, width = 1 * 140, height = 1 * 120, dpi = 600, units = 'mm')
+  ggsave(plot_name, plot = scenario_p, width = 140, height = 100, dpi = 600, units = 'mm')
   
   # Extract RMSEs from models
   rmse_out_all_models <- rmse_values_combined |>

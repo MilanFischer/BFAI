@@ -1,0 +1,14 @@
+model,calibration,verification
+Artificial Neural Network,0.99,0.89
+Bagged Classification and Regression Trees,0.42,0.94
+Bayesian Additive Regression Trees,0.88,0.9
+Cubist Regression,0.99,0.88
+Elastic Net Regression,0.96,0.94
+Extreme Gradient Boosting,0.93,0.88
+Generalized Linear Model,0.99,0.89
+Multivariate Adaptive Regression Splines,0.99,0.89
+Random Forest,0.7,0.87
+Support Vector Machine (Linear),1.01,0.9
+Support Vector Machine (Polynomial),0.99,0.89
+Support Vector Machine (Radial),0.98,0.91
+ensemble,0.82,0.9

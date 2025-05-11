@@ -8,12 +8,12 @@
 # Ideas
 # If use_country == TRUE -> exclude broadleaved, coniferous and pines – done
 # Show correlation matrix of predictors for 001 and 033
-# Add mean line for future prediction figure
+# Add mean line for future prediction figure - done
 # Ask for annual data – done
 # Can we get additional countries – in the future  yes, we will see how long it will take.
 
 # for(run_ID in 3:15){
-for(run_ID in 1:33){
+for(run_ID in 1:34){
   # Clear workspace
   rm(list = setdiff(ls(), "run_ID"))
   
@@ -48,8 +48,8 @@ for(run_ID in 1:33){
   
   # Set up parallel processing (to speed up computations)
   num_cores <- parallel::detectCores(logical = TRUE) - 1  # Use all but 1 core
-  cl <- makeCluster(num_cores)
-  registerDoParallel(cl)
+  registerDoFuture()
+  plan(multisession, workers = num_cores)
   
   # Load data and handle missing values
   # Ensure proper handling of missing values
@@ -109,7 +109,7 @@ for(run_ID in 1:33){
     cor_filtered_cols <- corr_filter(calibration_data, cor_thresh)
     
     boruta_filtered_cols <- get_boruta_predictors(calibration_data |> select(all_of(cor_filtered_cols)),
-                                                  target = target, use_country = use_country, min_freq = 5, v = 10, seed = 1234)
+                                                  target = target, use_country = use_country, min_freq = 5, v = 10, seed = seed)
     
     predictors_only <- setdiff(boruta_filtered_cols, c(target, "Year"))
     
@@ -256,6 +256,7 @@ for(run_ID in 1:33){
       save_workflow = TRUE
     )
   
+  set.seed(seed)
   # Run the grid search
   grid_results <-
     all_workflows |>
@@ -290,16 +291,18 @@ for(run_ID in 1:33){
       save_workflow = TRUE
     )
   
+  set.seed(seed)
   race_results <-
     all_workflows |>
     workflow_map(
       "tune_race_anova",
-      seed = 123,
+      seed = seed,
       resamples = cv_folds,
       grid = 100,
       control = race_ctrl
     )
   
+  set.seed(seed)
   race_results |>  
     rank_results() |>  
     filter(.metric == "rmse") |>  
@@ -315,6 +318,7 @@ for(run_ID in 1:33){
     lims(y = c(0.6, 1.4)) +
     theme(legend.position = "none")
   
+  set.seed(seed)
   matched_results <- 
     rank_results(race_results, select_best = TRUE) |>  
     select(wflow_id, .metric, race = mean, config_race = .config) |> 
@@ -345,12 +349,14 @@ for(run_ID in 1:33){
     # Extract the model information
     model_id <- matched_results$wflow_id[i]
     
+    set.seed(seed)
     # Get the best configuration for the current model
     best_results <- race_results |>  
       extract_workflow_set_result(model_id) |> 
       select_best(metric = "rmse")
     
     # Finalize the model with the best hyperparameters
+    set.seed(seed)
     final_model <- race_results |> 
       extract_workflow(model_id) |>  
       finalize_workflow(best_results) |>  
@@ -386,6 +392,7 @@ for(run_ID in 1:33){
   #--------------
   # Ensemble mean
   if(metamodel == FALSE){
+    set.seed(seed)
     models_stack <- 
       stacks() |>  
       add_candidates(race_results)
@@ -428,7 +435,6 @@ for(run_ID in 1:33){
       theme(legend.position = "none") +
       lims(x = c(-0.01, 0.8))
     
-    
     # Step 1: Extract weights plot data
     weights_data <- autoplot(ens, "weights")$data
     
@@ -437,12 +443,12 @@ for(run_ID in 1:33){
     lookup <- purrr::imap_dfr(ens$cols_map, ~ tibble(terms = .x, label = .y))
     
     # Step 3: Join and collapse to readable names
-    weights_labeled <- weights_data %>%
-      left_join(lookup, by = "terms") %>%
+    weights_labeled <- weights_data |> 
+      left_join(lookup, by = "terms") |> 
       mutate(label = factor(label, levels = unique(label)))  # optional
     
-    weights_labeled <- weights_labeled %>%
-      arrange(desc(weight)) %>%
+    weights_labeled <- weights_labeled |> 
+      arrange(desc(weight)) |> 
       mutate(member_rank = row_number())  # this will be used as y-axis
     
     stack_rank <- ggplot(weights_labeled, aes(x = weight, y = reorder(member_rank, weight))) +
@@ -466,6 +472,7 @@ for(run_ID in 1:33){
     }
     ggsave(plot_name, plot = stack_rank, width = 1 * 140, height = 1 * 130, dpi = 600, units = 'mm')
     
+    set.seed(seed)
     ens <- fit_members(ens)
     
     reg_metrics <- metric_set(rmse, rsq)
@@ -779,7 +786,6 @@ for(run_ID in 1:33){
   
   #-------------------------------------------------------------------------------
   
-  
   calibration_data |> 
     filter(Year %in% 1991:2020, Country == "CZE") |> 
     pull(log_BFA1000) |> 
@@ -842,12 +848,14 @@ for(run_ID in 1:33){
     # Extract the model information
     model_id <- matched_results$wflow_id[i]
     
+    set.seed(seed)
     # Get the best configuration for the current model
     best_results <- race_results |>  
       extract_workflow_set_result(model_id) |>  
       select_best(metric = "rmse")
     
     # Finalize the model with the best hyperparameters
+    set.seed(seed)
     final_model <- race_results |> 
       extract_workflow(model_id) |>  
       finalize_workflow(best_results) |>  
@@ -1160,8 +1168,26 @@ for(run_ID in 1:33){
     mutate(model = "ensemble") |>
     select(model, calibration, verification)
   
-  # Combine all RMSEs
+  # Combine RMSE statistics from individual models and the ensemble into one table
   error_stat <- bind_rows(rmse_out_all_models, ensemble_row)
   
+  # Save RMSE summary table as a CSV file for external review or reporting
   write_csv(error_stat, paste0(out_path, "/error_stat.csv"))
+  
+  # Save full tuning results from grid search (slower but exhaustive)
+  saveRDS(grid_results, file = paste0(out_path, "/grid_results.rds"))
+  
+  # Save full tuning results from racing (faster, early-stopping based tuning)
+  saveRDS(race_results, file = paste0(out_path, "/race_results.rds"))
+  
+  # Save the comparison between the best configurations from racing and grid search
+  saveRDS(matched_results, file = paste0(out_path, "/matched_results.rds"))
+  
+  # Save the full model stack (only if metamodel ensemble is not used)
+  if(metamodel == FALSE){
+    saveRDS(models_stack, file = paste0(out_path, "/models_stack.rds"))
+  }
+  
+  # Save the final ensemble model (either blended or meta-model-based)
+  saveRDS(ens, file = paste0(out_path, "/ensemble_model.rds"))
 }

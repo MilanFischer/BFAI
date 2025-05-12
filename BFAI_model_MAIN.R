@@ -12,8 +12,7 @@
 # Ask for annual data – done
 # Can we get additional countries – in the future  yes, we will see how long it will take.
 
-# for(run_ID in 3:15){
-for(run_ID in 1:34){
+for(run_ID in 1:35){
   # Clear workspace
   rm(list = setdiff(ls(), "run_ID"))
   
@@ -134,6 +133,7 @@ for(run_ID in 1:34){
       theme_minimal()
     
     final_cols <- c("Year", target, vip_df$Predictors[1:run_ID])
+    final_cols <- purrr::discard(final_cols, is.na)
     
     calibration_data <- calibration_data |> select(all_of(final_cols))
     verification_data <- verification_data |> select(all_of(final_cols))
@@ -389,68 +389,104 @@ for(run_ID in 1:34){
     theme_bw() +
     scale_color_manual(values = c("calibration" = "blue", "verification" = "red"))
   
-  #--------------
+  # --------------
   # Ensemble mean
   if(metamodel == FALSE){
     set.seed(seed)
-    models_stack <- 
-      stacks() |>  
+    models_stack <-
+      stacks() |>
       add_candidates(race_results)
-    
+
     models_stack
-    
-    # filtered_results <- race_results |> 
+
+    # filtered_results <- race_results |>
     #   filter(wflow_id != "MARS")
-    # 
-    # models_stack <- stacks() |>  
+    #
+    # models_stack <- stacks() |>
     #   add_candidates(filtered_results)
-    
+
     # Calculate RMSE for each model column
-    rmse_results <- models_stack |> 
-      summarise(across(-log_BFA1000, 
+    rmse_results <- models_stack |>
+      summarise(across(-log_BFA1000,
                        ~ yardstick::rmse_vec(models_stack$log_BFA1000, .x),
-                       .names = "RMSE_{.col}")) |> 
-      pivot_longer(cols = everything(), 
-                   names_to = "Model", 
-                   values_to = "RMSE") |> 
+                       .names = "RMSE_{.col}")) |>
+      pivot_longer(cols = everything(),
+                   names_to = "Model",
+                   values_to = "RMSE") |>
       arrange(RMSE)
-    
+
     # Display RMSE results sorted
     print(rmse_results)
-    
+
     View(rmse_results)
-    
+
     set.seed(seed+1)
     ens <- blend_predictions(models_stack)
-    
+
     autoplot(ens)
-    
+
     set.seed(seed+2)
     ens <- blend_predictions(models_stack, penalty = 10^seq(-2, -0.5, length = 20))
-    
+
+    #---------------------------------------------------------------------------
+
+    n_ens_reps <- 20
+    all_ens_models <- list()
+    rmse_scores <- numeric(n_ens_reps)
+
+    reg_metrics <- metric_set(rmse)
+
+    for (i in 1:n_ens_reps) {
+      set.seed(seed + i)
+
+      ens_tmp <- blend_predictions(models_stack, penalty = 10^seq(-2, -0.5, length = 20))
+
+      # Fit members before evaluation
+      ens_tmp <- fit_members(ens_tmp)
+
+      # Predict on calibration data and compute RMSE
+      pred_tmp <- predict(ens_tmp, calibration_data) |>
+        bind_cols(calibration_data)
+
+      rmse_val <- reg_metrics(pred_tmp, truth = log_BFA1000, estimate = .pred) |>
+        filter(.metric == "rmse") |>
+        pull(.estimate)
+
+      rmse_scores[i] <- rmse_val
+      all_ens_models[[i]] <- ens_tmp
+    }
+
+    # Select the best ensemble (lowest RMSE on calibration set)
+    best_index <- which.min(rmse_scores)
+    ens <- all_ens_models[[best_index]]
+    message("Selected ensemble model from seed index ", best_index,
+            " with RMSE: ", round(rmse_scores[best_index], 4))
+
+    #---------------------------------------------------------------------------
+
     autoplot(ens)
-    
+
     stack_rank <- autoplot(ens, "weights") +
-      geom_text(aes(x = weight + 0.01, label = model), hjust = 0) + 
+      geom_text(aes(x = weight + 0.01, label = model), hjust = 0) +
       theme(legend.position = "none") +
       lims(x = c(-0.01, 0.8))
-    
+
     # Step 1: Extract weights plot data
     weights_data <- autoplot(ens, "weights")$data
-    
+
     # Step 2: Use ens$cols_map to reverse-map model names
     # Create lookup: every member ID maps to readable name
     lookup <- purrr::imap_dfr(ens$cols_map, ~ tibble(terms = .x, label = .y))
-    
+
     # Step 3: Join and collapse to readable names
-    weights_labeled <- weights_data |> 
-      left_join(lookup, by = "terms") |> 
+    weights_labeled <- weights_data |>
+      left_join(lookup, by = "terms") |>
       mutate(label = factor(label, levels = unique(label)))  # optional
-    
-    weights_labeled <- weights_labeled |> 
-      arrange(desc(weight)) |> 
+
+    weights_labeled <- weights_labeled |>
+      arrange(desc(weight)) |>
       mutate(member_rank = row_number())  # this will be used as y-axis
-    
+
     stack_rank <- ggplot(weights_labeled, aes(x = weight, y = reorder(member_rank, weight))) +
       geom_col(aes(fill = label)) +
       geom_text(aes(x = weight + 0.01, label = label), hjust = 0) +
@@ -462,8 +498,8 @@ for(run_ID in 1:34){
         y = "Member"
       ) +
       lims(x = c(0, 0.4))
-    
-  
+
+
     # Save the plot
     if(use_country == TRUE){
       plot_name <- paste0(out_path, "/stack_rank_ensemble_country.png")
@@ -471,57 +507,57 @@ for(run_ID in 1:34){
       plot_name <- paste0(out_path, "/stack_rank_ensemble.png")
     }
     ggsave(plot_name, plot = stack_rank, width = 1 * 140, height = 1 * 130, dpi = 600, units = 'mm')
-    
+
     set.seed(seed)
     ens <- fit_members(ens)
-    
+
     reg_metrics <- metric_set(rmse, rsq)
-    
-    ens_calibration_pred <- 
-      predict(ens, calibration_data) |> 
-      bind_cols(calibration_data) |> 
+
+    ens_calibration_pred <-
+      predict(ens, calibration_data) |>
+      bind_cols(calibration_data) |>
       mutate(dataset = "calibration")
-    
-    ens_calibration_pred |>  
+
+    ens_calibration_pred |>
       reg_metrics(log_BFA1000, .pred)
-    
-    ens_verification_pred <- 
-      predict(ens, verification_data) |> 
-      bind_cols(verification_data) |> 
+
+    ens_verification_pred <-
+      predict(ens, verification_data) |>
+      bind_cols(verification_data) |>
       mutate(dataset = "verification")
-    
-    ens_verification_pred |>  
+
+    ens_verification_pred |>
       reg_metrics(log_BFA1000, .pred)
-    
+
     # Combine ens predictions into a single dataframe
     ens_model_pred_df <- bind_rows(ens_calibration_pred, ens_verification_pred)
-    
+
   }else{
     # Apply metamodel ensemble
     metafit <- metafit_ens(race_results, calibration_data, verification_data, rmse_deviation = 1.1, model = metamodel)
-    
+
     ens_model_pred_df <- metafit$predictions
     ens <- metafit$ensemble
   }
-  
+
   # Calculate RMSE and R-squared for calibration and verification datasets using yardstick
-  metrics_values <- ens_model_pred_df |> 
-    group_by(dataset) |> 
+  metrics_values <- ens_model_pred_df |>
+    group_by(dataset) |>
     summarize(
       rmse = rmse_vec(truth = log_BFA1000, estimate = .pred),
       r2 = rsq_vec(truth = log_BFA1000, estimate = .pred)
-    ) |> 
+    ) |>
     mutate(metric_label = case_when(
-      dataset == "calibration"  ~ paste0("Calibration: RMSE == ", round(rmse, 2), 
+      dataset == "calibration"  ~ paste0("Calibration: RMSE == ", round(rmse, 2),
                                          " ~ \";\" ~ R^2 == ", round(r2, 2)),
-      dataset == "verification" ~ paste0("Verification: RMSE == ", round(rmse, 2), 
+      dataset == "verification" ~ paste0("Verification: RMSE == ", round(rmse, 2),
                                          " ~ \";\" ~ R^2 == ", round(r2, 2))
     ))
-  
+
   # Adjust positions for the metrics labels
-  metrics_values <- metrics_values |> 
-    mutate(y_position = ifelse(dataset == "calibration", 
-                               max(ens_model_pred_df$.pred) - 0.1, 
+  metrics_values <- metrics_values |>
+    mutate(y_position = ifelse(dataset == "calibration",
+                               max(ens_model_pred_df$.pred) - 0.1,
                                max(ens_model_pred_df$.pred) - 0.5))
   
   # Create the ggplot with RMSE and R-squared annotations
@@ -611,13 +647,83 @@ for(run_ID in 1:34){
       legend.text = element_text(size = 10)
     )
   
+  # Extract the Country legend from the main_plot_ens_pred
+  country_legend <- get_legend(main_plot_ens_pred)
+  
+  # Create dummy data for Dataset legend (empty vs. filled)
+  dataset_legend_data <- data.frame(
+    x = c(1, 1),
+    y = c(1, 2),
+    Dataset = factor(c("calibration", "verification"))
+  )
+  
+  # Create dummy plot for Dataset legend
+  dataset_legend_plot <- ggplot(dataset_legend_data, aes(x = x, y = y, fill = Dataset, shape = Dataset)) +
+    geom_point(size = 3, stroke = 1, color = "#2b2b2b") +
+    scale_fill_manual(
+      values = c("calibration" = "white", "verification" = "#2b2b2b"),
+      name = "Dataset",
+      labels = c("Calibration", "Verification")
+    ) +
+    scale_shape_manual(
+      values = c(21, 21),
+      name = "Dataset",
+      labels = c("Calibration", "Verification")
+    ) +
+    theme_bw() +
+    theme(
+      legend.position = "right",
+      legend.title = element_text(face = "bold"),
+      legend.text = element_text(size = 10)
+    )
+  
+  # Extract the Dataset legend
+  dataset_legend <- get_legend(dataset_legend_plot)
+  
+  # Remove legends from the main plot
+  main_plot_ens_pred <- main_plot_ens_pred +
+    theme(legend.position = "none")
+  
+  # Standardize widths
+  max_width <- grid::unit.pmax(country_legend$widths, dataset_legend$widths)
+  country_legend$widths <- max_width
+  dataset_legend$widths <- max_width
+  
+  # create a blank plot for legend alignment 
+  spacer <- plot_spacer() + theme_void()
+  
+  # Combine both legends
+  legends <- plot_grid(
+    spacer,
+    grid::grobTree(country_legend),
+    spacer,
+    grid::grobTree(dataset_legend),
+    spacer,
+    ncol = 1,
+    nrow = 5,
+    align = "hv",
+    axis = "l",
+    rel_heights = c(0.13, 0.4, 0.15, 0.3, 0.02)
+  )
+  
+  # Final plot
+  final_plot_ens_pred <- plot_grid(
+    main_plot_ens_pred,
+    legends,
+    nrow = 1,
+    align = "h",
+    axis = "t",
+    rel_widths = c(0.75, 0.2)
+  ) + theme_bw() +
+    theme(panel.border = element_blank())
+  
   # Save the plot
   if(use_country == TRUE){
     plot_name <- paste0(out_path, "/ensemble_models_predictions_log-scale_country.png")
   }else{
     plot_name <- paste0(out_path,"/ensemble_models_predictions_log-scale.png")
   }
-  ggsave(plot_name, plot = main_plot_ens_pred, width = 1 * 140, height = 1 * 130, dpi = 600, units = 'mm')
+  ggsave(plot_name, plot = final_plot_ens_pred, width = 1 * 150, height = 1 * 130, dpi = 600, units = 'mm')
   
   #-------------------------------------------------------------------------------
   

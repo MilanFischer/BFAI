@@ -1,12 +1,17 @@
-get_boruta_predictors <- function(data, target, use_country = TRUE, min_freq = 5, v = 10, seed = 1234) {
+get_boruta_predictors <- function(data, target, use_country = TRUE, use_year = FALSE, min_freq = 5, v = 10, seed = 1234) {
   set.seed(seed)
   
   # Step 1: Create formula based on input data
-  if (use_country) {
-    predictors <- setdiff(names(data), c(target, "Year"))
-  }else{
-    predictors <- setdiff(names(data), c(target, "Year", "Country"))
+  exclude_cols <- c(target)
+  if (!use_year) {
+    exclude_cols <- c(exclude_cols, "Year")
   }
+  if (!use_country) {
+    exclude_cols <- c(exclude_cols, "Country")
+  }
+  
+  # Determine predictors
+  predictors <- setdiff(names(data), exclude_cols)
   
   formula <- as.formula(paste(target, "~", paste(predictors, collapse = " + ")))
   
@@ -44,6 +49,5 @@ get_boruta_predictors <- function(data, target, use_country = TRUE, min_freq = 5
     dplyr::pull(all_vars) |>
     as.character()
   
-  # Put the "Year" back into the list
-  return(unique(c("Year", "Country", final_sel)))
+  return(final_sel)
 }

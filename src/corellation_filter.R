@@ -1,13 +1,13 @@
-corr_filter <- function(data, cutoff = 0.9){
+corr_filter <- function(data, cutoff = 0.9, use_year = FALSE){
   #-------------------------------------------------------------------------------
   # Step 1: Remove Highly Correlated Features (keeping the one most correlated with log_BFA1000)
   cor_matrix <- cor(
-    data |> select(-all_of(c(target, "Country", "Year"))),
+    data |> select(-all_of(c(target, "Country", if (!use_year) "Year"))),
     use = "pairwise.complete.obs"
   )
   
   correlation_with_target <- cor(
-    data |> select(-all_of(c(target, "Country", "Year"))), 
+    data |> select(-all_of(c(target, "Country", if (!use_year) "Year"))), 
     data |> pull(all_of(target)), 
     use = "pairwise.complete.obs"
   )

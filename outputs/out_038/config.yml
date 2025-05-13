@@ -1,0 +1,22 @@
+predictors:
+- Broadleaved
+- VPD_1
+- Country
+- DFM10H_u10_3
+- Pines
+- VPD_4
+- FWI_FD_4
+- FWI_6_1
+- FWI_3_4
+- AWD0_40_sum_3
+- FWI_FD_5
+- AWR0_40_u30_5
+- FWI_3_5
+- AWD0_40_sum_4
+- FWI_4_4
+use_country: yes
+use_year: no
+target: log_BFA1000
+cor_thresh: 0.9
+metamodel: no
+seed: 1234.0

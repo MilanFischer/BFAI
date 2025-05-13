@@ -31,6 +31,9 @@ for(run_ID in 1:35){
   # Choose whether to use country as the predictor
   use_country <- TRUE
   
+  # Choose whether to use country as the predictor
+  use_year <- FALSE
+  
   # Apply metamodel ensemble mean: FALSE or "lm", "glm", "xgboost", "nnet", "glmnet", "ranger", "cubist", "bart"
   metamodel <- FALSE
   
@@ -89,6 +92,8 @@ for(run_ID in 1:35){
     
     use_country <- config$use_country
     
+    use_year <- config$use_year
+    
     target <- config$target
     
     cor_thresh <- config$cor_thresh
@@ -105,12 +110,12 @@ for(run_ID in 1:35){
     seed <- 1234
     
     # Remove highly correlated predictors 
-    cor_filtered_cols <- corr_filter(calibration_data, cor_thresh)
+    cor_filtered_cols <- corr_filter(data = calibration_data, cutoff = cor_thresh, use_year = use_year)
     
     boruta_filtered_cols <- get_boruta_predictors(calibration_data |> select(all_of(cor_filtered_cols)),
-                                                  target = target, use_country = use_country, min_freq = 5, v = 10, seed = seed)
+                                                  target = target, use_country = use_country, use_year = use_year, min_freq = 5, v = 10, seed = seed)
     
-    predictors_only <- setdiff(boruta_filtered_cols, c(target, "Year"))
+    predictors_only <- setdiff(boruta_filtered_cols, c(target, if (!use_year) "Year"))
     
     # RFE with correct predictors
     ctrl <- rfeControl(functions = rfFuncs, method = "cv", number = 10)
@@ -124,26 +129,32 @@ for(run_ID in 1:35){
     # Sort by importance
     vip_df <- vip_df[order(-vip_df$Importance), ]
     
-    # Plot
-    ggplot(vip_df, aes(x = reorder(Predictors, Importance), y = Importance)) +
+    # Define plot name
+    plot_name <- paste0(out_path, "/feature_importance.png")
+    
+    # Create plot
+    p <- ggplot(vip_df, aes(x = reorder(Predictors, Importance), y = Importance)) +
       geom_col() +
       coord_flip() +
       labs(title = "Variable Importance (RFE - Random Forest)",
            x = "Variable", y = "Importance") +
-      theme_minimal()
+      theme_bw()
     
-    final_cols <- c("Year", target, vip_df$Predictors[1:run_ID])
-    final_cols <- purrr::discard(final_cols, is.na)
+    # Save plot
+    ggsave(plot_name, plot = p, width = 8, height = 6, dpi = 300)
     
-    calibration_data <- calibration_data |> select(all_of(final_cols))
-    verification_data <- verification_data |> select(all_of(final_cols))
+    final_cols <- c(target, vip_df$Predictors)
+
+    calibration_data <- calibration_data |> select(all_of(if ("Year" %in% final_cols) c("Year", setdiff(final_cols, "Year")) else final_cols))
+    verification_data <- verification_data |> select(all_of(if ("Year" %in% final_cols) c("Year", setdiff(final_cols, "Year")) else final_cols))
     
-    predictors <- setdiff(final_cols, c("Year", target))
+    predictors <- setdiff(final_cols, target)
     
     # Save predictors and seed to config.yml
     config <- list(
       predictors = predictors,
-      use_country =use_country,
+      use_country = use_country,
+      use_year = use_year,
       target = target,
       cor_thresh = cor_thresh,
       metamodel = metamodel,
@@ -723,7 +734,7 @@ for(run_ID in 1:35){
   }else{
     plot_name <- paste0(out_path,"/ensemble_models_predictions_log-scale.png")
   }
-  ggsave(plot_name, plot = final_plot_ens_pred, width = 1 * 150, height = 1 * 130, dpi = 600, units = 'mm')
+  ggsave(plot_name, plot = final_plot_ens_pred, width = 1 * 160, height = 1 * 130, dpi = 600, units = 'mm')
   
   #-------------------------------------------------------------------------------
   
@@ -927,6 +938,20 @@ for(run_ID in 1:35){
       names_from = Ccode,
       values_from = Value
     )
+  
+  # Add Year
+  data_scenarios_wide <- data_scenarios_wide |> 
+    mutate(Year = case_when(
+      Period == "1961-1990" ~ 1976,
+      Period == "1981-2010" ~ 1996,
+      Period == "1991-2020" ~ 2006,
+      Period == "2030"      ~ 2030,
+      Period == "2050"      ~ 2050,
+      Period == "2070"      ~ 2070,
+      Period == "2085"      ~ 2085,
+      TRUE ~ NA_real_  # fallback for unexpected Period values
+    )) |> 
+    relocate(Year, .after = Period)
   
   # Extract mean values for Pines, Conifers, Broadleaved and BFA1000 for 1991-2020 in CZE
   cze_summary <- clean_data |> 
@@ -1255,29 +1280,41 @@ for(run_ID in 1:35){
   }
   ggsave(plot_name, plot = scenario_p, width = 140, height = 100, dpi = 600, units = 'mm')
   
-  # Extract RMSEs from models
-  rmse_out_all_models <- rmse_values_combined |>
-    extract(combined_label,
-            into = c("calibration", "verification"),
-            regex = "calibration</sub> = ([0-9.]+)<br>RMSE<sub>verification</sub> = ([0-9.]+)",
-            convert = TRUE) |>
-    select(model, calibration, verification)
+  # --- RMSE ---
+  rmse_individual <- all_model_predictions_df |> 
+    group_by(model, dataset) |> 
+    summarise(rmse = rmse_vec(truth = log_BFA1000, estimate = .pred), .groups = "drop")
   
-  # Extract and reshape ensemble RMSEs
-  ensemble_row <- metrics_values |>
-    extract(metric_label,
-            into = c("calibration", "verification"),
-            regex = "RMSE == ([0-9.]+) ~ .* R\\^2 == ([0-9.]+)",
-            convert = TRUE) |>
-    select(dataset, calibration) |>
-    pivot_wider(names_from = dataset, values_from = calibration) |>
-    mutate(model = "ensemble") |>
-    select(model, calibration, verification)
+  rmse_ensemble <- ens_model_pred_df |> 
+    group_by(dataset) |> 
+    summarise(rmse = rmse_vec(truth = log_BFA1000, estimate = .pred), .groups = "drop") |> 
+    mutate(model = "ensemble")
   
-  # Combine RMSE statistics from individual models and the ensemble into one table
-  error_stat <- bind_rows(rmse_out_all_models, ensemble_row)
+  rmse_all <- bind_rows(rmse_individual, rmse_ensemble) |> 
+    pivot_wider(names_from = dataset, values_from = rmse, names_prefix = "rmse_")
   
-  # Save RMSE summary table as a CSV file for external review or reporting
+  # --- R-squared ---
+  rsq_individual <- all_model_predictions_df |> 
+    group_by(model, dataset) |> 
+    summarise(rsq = rsq_vec(truth = log_BFA1000, estimate = .pred), .groups = "drop")
+  
+  rsq_ensemble <- ens_model_pred_df |> 
+    group_by(dataset) |> 
+    summarise(rsq = rsq_vec(truth = log_BFA1000, estimate = .pred), .groups = "drop") |> 
+    mutate(model = "ensemble")
+  
+  rsq_all <- bind_rows(rsq_individual, rsq_ensemble) |> 
+    pivot_wider(names_from = dataset, values_from = rsq, names_prefix = "rsq_")
+  
+  # --- Combine RMSE and R² into one table ---
+  error_stat <- rmse_all |> 
+    left_join(rsq_all, by = "model") |> 
+    select(model, rmse_calibration, rmse_verification, rsq_calibration, rsq_verification)
+  
+  # --- Save to CSV ---
+  write_csv(error_stat, paste0(out_path, "/error_stat.csv"))
+  
+    # Save RMSE summary table as a CSV file for external review or reporting
   write_csv(error_stat, paste0(out_path, "/error_stat.csv"))
   
   # Save full tuning results from grid search (slower but exhaustive)

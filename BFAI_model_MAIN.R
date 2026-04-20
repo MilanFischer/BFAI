@@ -145,8 +145,8 @@ for(run_ID in 1:35){
     
     final_cols <- c(target, vip_df$Predictors)
 
-    calibration_data <- calibration_data |> select(all_of(if ("Year" %in% final_cols) c("Year", setdiff(final_cols, "Year")) else final_cols))
-    verification_data <- verification_data |> select(all_of(if ("Year" %in% final_cols) c("Year", setdiff(final_cols, "Year")) else final_cols))
+    calibration_data <- calibration_data |> select(all_of(if ("Year" %in% final_cols) c("Year", setdiff(final_cols, "Year")) else c("Year", final_cols)))
+    verification_data <- verification_data |> select(all_of(if ("Year" %in% final_cols) c("Year", setdiff(final_cols, "Year")) else c("Year", final_cols)))
     
     predictors <- setdiff(final_cols, target)
     
@@ -751,7 +751,7 @@ for(run_ID in 1:35){
         "RMSE<sub>calibration</sub> = ", sprintf("%.2f", rmse[dataset == "calibration"]), "<br>",
         "RMSE<sub>verification</sub> = ", sprintf("%.2f", rmse[dataset == "verification"])
       ),
-      y_position = 5.5
+      y_position = 5.1
     )
   
   range(all_model_predictions_df$log_BFA1000)
@@ -762,7 +762,7 @@ for(run_ID in 1:35){
   main_plot_with_legend <- ggplot(all_model_predictions_df, aes(x = log_BFA1000, y = .pred, color = Country, shape = Country)) +
     geom_point(aes(fill = ifelse(dataset == "verification", Country, NA)), 
                size = 3, alpha = 0.8, stroke = 1) +  # stroke adjusts border width
-    facet_wrap(~ model) +  # Create facets for each model
+    facet_wrap(~ model, nrow = 4, ncol = 3) +  # Create facets for each model
     scale_shape_manual(
       values = rep(c(21, 22, 24), length.out = length(unique(all_model_predictions_df$Country))),
       name = "Country"
@@ -818,7 +818,8 @@ for(run_ID in 1:35){
     theme(
       legend.position = "right",
       legend.title = element_text(face = "bold"),
-      legend.text = element_text(size = 10)
+      legend.text = element_text(size = 10),
+      strip.text = element_text(size = 10, face = "bold")
     )
   
   # Extract the Country legend
@@ -876,7 +877,7 @@ for(run_ID in 1:35){
     nrow = 5,                           # Four rows for flexibility
     align = "hv",                       # Vertically align the legends
     axis = "l",                         # Align elements along the left axis
-    rel_heights = c(0.1, 1, 0.1, 1, 1.5)  # Adjust these to control spacing/alignment
+    rel_heights = c(6, 1, 0.4, 1, 0.01)  # Adjust these to control spacing/alignment
   )
   
   # Combine the two legends into one
@@ -885,7 +886,7 @@ for(run_ID in 1:35){
                        nrow = 1,
                        align = "h",
                        axis = "t",
-                       rel_widths = c(1, 0.1)
+                       rel_widths = c(1, 0.15)
   ) + theme_bw() +
     theme(
       panel.border = element_blank()     # Remove the black border around the plot
@@ -899,7 +900,7 @@ for(run_ID in 1:35){
   }else{
     plot_name <- paste0(out_path, "/all_models_predictions_log-scale.png")
   }
-  ggsave(plot_name, plot = final_p, width = 4 * 120, height = 3 * 110, dpi = 600, units = 'mm')
+  ggsave(plot_name, plot = final_p, width = 3 * 125*0.8, height = 4 * 110*0.8, dpi = 600, units = 'mm')
   
   #-------------------------------------------------------------------------------
   

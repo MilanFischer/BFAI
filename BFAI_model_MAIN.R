@@ -12,7 +12,8 @@
 # Ask for annual data – done
 # Can we get additional countries – in the future  yes, we will see how long it will take.
 
-for(run_ID in 1:35){
+#for(run_ID in 43){
+  run_ID <- 47
   # Clear workspace
   rm(list = setdiff(ls(), "run_ID"))
   
@@ -44,25 +45,103 @@ for(run_ID in 1:35){
   # out_path <- create_next_output_dir()
   out_path <- paste0("./outputs/out_", sprintf("%03d", run_ID))
   
+  dir.create(paste0(out_path, "/scenarios"), recursive = TRUE)
+  
+  # Number of hyperparameter combinations tested during tuning
+  # Lower values = faster debugging
+  # Higher values = more thorough optimization
+  
+  grid_1 <- 5    # Initial coarse search, 50
+  grid_2 <- 10   # ANOVA racing refinement, 100
+  
+  
   # Separate calibration and verification datasets
-  calibration_years <- seq(1990, 2022)[(seq(1990, 2022) - 1990) %% 3 != 2]  # 1st and 2nd years in each 3-year block
-  verification_years <- seq(1990, 2022)[(seq(1990, 2022) - 1990) %% 3 == 2]  # 3rd year in each 3-year block
+  calibration_years <- seq(1990, 2024)[(seq(1990, 2024) - 1990) %% 3 != 2]  # 1st and 2nd years in each 3-year block
+  verification_years <- seq(1990, 2024)[(seq(1990, 2024) - 1990) %% 3 == 2]  # 3rd year in each 3-year block
   
   # Set up parallel processing (to speed up computations)
   num_cores <- parallel::detectCores(logical = TRUE) - 1  # Use all but 1 core
   registerDoFuture()
   plan(multisession, workers = num_cores)
   
+  #------------------------------------
   # Load data and handle missing values
-  # Ensure proper handling of missing values
-  data <- read_excel("./inputs/BFAI_inputs.xlsx", 
-                     sheet = "inputs", 
-                     na = c("", "NA", "N/A", "#N/A"))
+
+  # Path to baseline folder
+  baseline_path <- "./inputs/baseline"
   
+  # Get only *_forest.csv files
+  forest_files <- list.files(
+    path = baseline_path,
+    pattern = "_forest\\.csv$",
+    full.names = TRUE
+  )
+  
+  data <- forest_files |> 
+    map_dfr(~ {
+      read_csv(.x, show_col_types = FALSE) |> 
+        pivot_longer(
+          cols = matches("^\\d{4}$"),
+          names_to = "Year",
+          values_to = "value"
+        ) |> 
+        mutate(
+          Country = str_extract(basename(.x), "^[A-Z]{3}"),
+          Year = as.numeric(Year),
+          varname = paste(Variable, Season, sep = "_")
+        ) |> 
+        select(Country, Year, varname, value)
+    }) |> 
+    pivot_wider(
+      names_from = varname,
+      values_from = value
+    ) |> 
+    filter(Year >= 1990) |> 
+    arrange(Country, Year)
+  
+  BFAI_data <- read_csv("./inputs/BFAI_1990-2024.csv", show_col_types = FALSE)
+  
+  data <- data |>
+    left_join(BFAI_data, by = c("Country", "Year"))
+
+  # Country for which no BFAI is not available: "EST", "GBR", "HUN", "IRL", "NLD"
+  data <- data |>
+    filter(!Country %in% c("EST", "GBR", "HUN", "IRL", "NLD"))
+
   # Replace infinite values with NA and drop them
   clean_data <- data |> 
     mutate(across(where(is.numeric), ~na_if(., Inf))) |>  # Replace Inf with NA
     drop_na()
+  
+  # Remove unused
+  clean_data <- clean_data |> 
+    select(-c("FA_kha", "BFA_ha"))
+  
+  # clean_data <- clean_data |> 
+  #   select(-starts_with(c("TMAX_", "TMIN_", "TAVG_", "RH_", "RHmin", "PREC", "SRAD", "WIND")))
+  
+  clean_data <- clean_data |> 
+    select(-starts_with(c("TMAX_", "TMIN_", "TAVG_", "RH_", "RHmin", "PREC", "SRAD", "WIND")),
+           -matches("ONDJFM|NDJF"))
+  
+  clean_data <- clean_data |> 
+    rename(
+      BFA1000 = BFAI,
+      Conifers = Share_Con,
+      Pines    = Share_Pines
+    ) |> 
+    mutate(
+      Broadleaved = 1 - Conifers
+    )
+  
+  clean_data <- clean_data |> 
+    relocate(BFA1000, .after = Year)
+  
+  clean_data <- clean_data |> 
+    rename_with(~ gsub("\\+", "_plus", .))
+  
+  clean_data <- clean_data |> 
+    rename_with(~ gsub("\\-", "_", .))
   
   # if(use_country == TRUE){
   #   clean_data <- clean_data |> select(-c("Pines", "Conifers", "Broadleaved"))
@@ -144,9 +223,17 @@ for(run_ID in 1:35){
     ggsave(plot_name, plot = p, width = 8, height = 6, dpi = 300)
     
     final_cols <- c(target, vip_df$Predictors)
+    
+    # keep_cols <- unique(c("Country", "Year", final_cols))
+    # 
+    # calibration_data <- calibration_data |>
+    #   select(any_of(keep_cols))
+    # 
+    # verification_data <- verification_data |>
+    #   select(any_of(keep_cols))
 
-    calibration_data <- calibration_data |> select(all_of(if ("Year" %in% final_cols) c("Year", setdiff(final_cols, "Year")) else c("Year", final_cols)))
-    verification_data <- verification_data |> select(all_of(if ("Year" %in% final_cols) c("Year", setdiff(final_cols, "Year")) else c("Year", final_cols)))
+    # calibration_data <- calibration_data |> select(all_of(if ("Year" %in% final_cols) c("Year", setdiff(final_cols, "Year")) else c("Year", final_cols)))
+    # verification_data <- verification_data |> select(all_of(if ("Year" %in% final_cols) c("Year", setdiff(final_cols, "Year")) else c("Year", final_cols)))
     
     predictors <- setdiff(final_cols, target)
     
@@ -165,19 +252,40 @@ for(run_ID in 1:35){
     message("Saved new config to: ", config_path)
   }
   
+  needed_cols <- unique(c("Country", "Year", target, predictors))
+  
+  calibration_data <- calibration_data |>
+    select(any_of(needed_cols))
+  
+  verification_data <- verification_data |>
+    select(any_of(needed_cols))
+  
+  
   # Create a formula dynamically
   formula <- as.formula(paste(target, "~", paste(predictors, collapse = " + ")))
   
+  # if (use_country == TRUE) {
+  #   no_pre_proc_rec <- recipe(formula, data = calibration_data) |>
+  #     step_nzv(all_predictors()) |>
+  #     step_lencode_glm(Country, outcome = target)
+  # } else {
+  #   no_pre_proc_rec <- recipe(formula, data = calibration_data) |>
+  #     # Retain Country even if not used
+  #     update_role(Country, new_role = "ID") |>
+  #     step_nzv(all_predictors())
+  # }
+  
   if (use_country == TRUE) {
     no_pre_proc_rec <- recipe(formula, data = calibration_data) |>
+      update_role(Year, new_role = "ID") |>
       step_nzv(all_predictors()) |>
-      step_lencode_glm(Country, outcome = target) 
+      step_lencode_glm(Country, outcome = target)
+    
   } else {
     no_pre_proc_rec <- recipe(formula, data = calibration_data) |>
-      # Retain Country even if not used
-      update_role(Country, new_role = "ID") |> 
       step_nzv(all_predictors())
   }
+  
   
   ###############################################################
   
@@ -274,7 +382,7 @@ for(run_ID in 1:35){
     workflow_map(
       seed = seed,
       resamples = cv_folds,
-      grid = 50, # Reduced grid size for debugging, otherwise set >50
+      grid = grid_1, # Reduced grid size for debugging, otherwise set >50
       control = grid_ctrl
     )
   
@@ -309,7 +417,7 @@ for(run_ID in 1:35){
       "tune_race_anova",
       seed = seed,
       resamples = cv_folds,
-      grid = 100,
+      grid = grid_2, # 100
       control = race_ctrl
     )
   
@@ -595,6 +703,11 @@ for(run_ID in 1:35){
     y_position = 5.5
     )
   
+  
+  # Set country levels
+  country_levels <- unique(ens_model_pred_df$Country)
+  custom_colors_country <- custom_colors_country[country_levels]
+  
   # Create the main plot with the legend
   num_countries <- length(unique(ens_model_pred_df$Country))
   main_plot_ens_pred <- ggplot(ens_model_pred_df, aes(x = log_BFA1000, y = .pred, color = Country, shape = Country)) +
@@ -724,7 +837,7 @@ for(run_ID in 1:35){
     nrow = 1,
     align = "h",
     axis = "t",
-    rel_widths = c(0.75, 0.2)
+    rel_widths = c(0.65, 0.2)
   ) + theme_bw() +
     theme(panel.border = element_blank())
   
@@ -809,11 +922,11 @@ for(run_ID in 1:35){
     ) +
     guides(
       color = guide_legend(
-        override.aes = list(
-          fill = custom_colors_country
-        )
-      )
-    ) +
+        ncol = 1,
+        override.aes = list(fill = custom_colors_country)
+      ),
+      shape = guide_legend(ncol = 1)
+    )+
     theme_bw() +
     theme(
       legend.position = "right",
@@ -877,7 +990,7 @@ for(run_ID in 1:35){
     nrow = 5,                           # Four rows for flexibility
     align = "hv",                       # Vertically align the legends
     axis = "l",                         # Align elements along the left axis
-    rel_heights = c(6, 1, 0.4, 1, 0.01)  # Adjust these to control spacing/alignment
+    rel_heights = c(4, 3, 0.4, 1, 0.01)  # Adjust these to control spacing/alignment
   )
   
   # Combine the two legends into one
@@ -903,384 +1016,516 @@ for(run_ID in 1:35){
   ggsave(plot_name, plot = final_p, width = 3 * 125*0.8, height = 4 * 110*0.8, dpi = 600, units = 'mm')
   
   #-------------------------------------------------------------------------------
-  
-  calibration_data |> 
-    filter(Year %in% 1991:2020, Country == "CZE") |> 
-    pull(log_BFA1000) |> 
-    mean() |> 
-    exp()
-  
-  # Load data
-  data_scenarios <- read_csv("./inputs/BFAI_CZE_avg_indicators.csv")
-  
-  # Pivot longer to tidy format
-  data_scenarios <- data_scenarios |> 
-    pivot_longer(
-      cols = -c(Variable, Season, Ccode), # Exclude the static columns
-      names_to = "Scenario", 
-      values_to = "Value"
+  # Climate scenario
+  make_country_scenario_plots <- function(country_code, ssp_use) {
+    
+    calibration_data |> 
+      filter(Year %in% 1991:2020, Country == country_code) |> 
+      pull(log_BFA1000) |> 
+      mean() |> 
+      exp()
+    
+    # Load data
+    scenario_root <- "./inputs"
+    
+    scenario_country_files <- list.files(
+      path = scenario_root,
+      pattern = paste0(country_code, "_forest\\.csv$"),
+      recursive = TRUE,
+      full.names = TRUE
+    ) |>
+      keep(\(x) str_detect(x, "scenariomip"))
+    
+    scenario_country <- scenario_country_files |>
+      map_dfr(\(file) {
+        
+        path_parts <- str_split(file, "/", simplify = TRUE)
+        
+        read_csv(file, show_col_types = FALSE) |>
+          pivot_longer(
+            cols = matches("^\\d{4}$"),
+            names_to = "Year",
+            values_to = "value"
+          ) |>
+          mutate(
+            Country = country_code,
+            Dataset = "scenario",
+            Scenario = str_extract(file, "ssp\\d+"),
+            GCM = path_parts[length(path_parts) - 2],
+            Period = as.numeric(path_parts[length(path_parts) - 1]),
+            Year = as.numeric(Year),
+            varname = paste(Variable, Season, sep = "_")
+          ) |>
+          select(Country, Scenario, GCM, Period, Year, Dataset, varname, value)
+        
+      }) |>
+      pivot_wider(
+        names_from = varname,
+        values_from = value
+      ) |>
+      arrange(Scenario, GCM, Period, Year)
+    
+
+    
+    # Add static predictors needed by model
+    country_summary <- clean_data |>
+      filter(Country == country_code) |>
+      summarise(
+        Pines = mean(Pines, na.rm = TRUE),
+        Conifers = mean(Conifers, na.rm = TRUE),
+        Broadleaved = mean(Broadleaved, na.rm = TRUE)
+      )
+    
+    bfa_reference <- clean_data |>
+      filter(
+        Country == country_code,
+        Year %in% 1991:2020
+      ) |>
+      summarise(
+        BFA1000_1991_2020 = exp(mean(log_BFA1000, na.rm = TRUE))
+      ) |>
+      pull(BFA1000_1991_2020)
+    
+    scenario_country_model <- scenario_country |>
+      mutate(
+        Country = country_code,
+        Pines = country_summary$Pines,
+        Conifers = country_summary$Conifers,
+        Broadleaved = country_summary$Broadleaved
+      )
+    
+    
+    scenario_country_model <- scenario_country_model |>
+      rename_with(
+        \(x) x |>
+          str_replace_all("\\+", "_plus") |>
+          str_replace_all("-", "_")
+      )
+    
+    
+    final_prediction_annual <- NULL
+    
+    for (i in seq_len(nrow(matched_results))) {
+      
+      model_id <- matched_results$wflow_id[i]
+      
+      set.seed(seed)
+      
+      best_results <- race_results |>
+        extract_workflow_set_result(model_id) |>
+        select_best(metric = "rmse")
+      
+      set.seed(seed)
+      
+      final_model <- race_results |>
+        extract_workflow(model_id) |>
+        finalize_workflow(best_results) |>
+        fit(data = calibration_data)
+      
+      tmp <- predict(final_model, new_data = scenario_country_model) |>
+        bind_cols(scenario_country_model) |>
+        mutate(
+          ML_model = model_id,
+          predicted_BFA1000 = exp(.pred)
+        )
+      
+      final_prediction_annual <- bind_rows(final_prediction_annual, tmp)
+    }
+    
+    
+    final_prediction <- final_prediction_annual |>
+      filter(Scenario == ssp_use) |>
+      group_by(Scenario, GCM, Period, ML_model) |>
+      summarise(
+        predicted_BFA1000 = mean(predicted_BFA1000, na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      mutate(
+        Period = as.character(Period),
+        BFA1000_1991_2020 = bfa_reference
+      ) |>
+      rename(
+        Climate_model = GCM
+      ) |>
+      mutate(
+        Climate_model = factor(
+          Climate_model,
+          levels = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
+                     "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1")
+        ),
+        Period_num = case_when(
+          Period == "2030" ~ 2030,
+          Period == "2050" ~ 2050,
+          Period == "2070" ~ 2070,
+          Period == "2085" ~ 2085,
+          TRUE ~ NA_real_
+        )
+      )
+    
+    baseline_prediction <- calibration_data |>
+      filter(Country == country_code) |>
+      mutate(
+        Period = case_when(
+          # Year %in% 1961:1990 ~ "1961-1990",
+          Year %in% 1981:2010 ~ "1981-2010",
+          Year %in% 1991:2020 ~ "1991-2020",
+          TRUE ~ NA_character_
+        )
+      ) |>
+      filter(!is.na(Period)) |>
+      group_by(Period) |>
+      summarise(
+        predicted_BFA1000 = exp(mean(log_BFA1000, na.rm = TRUE)),
+        BFA1000_1991_2020 = bfa_reference,
+        .groups = "drop"
+      ) |>
+      crossing(
+        ML_model = final_prediction |>
+          distinct(ML_model) |>
+          pull(ML_model)
+      ) |>
+      mutate(
+        Climate_model = "Baseline"
+      ) |>
+      select(predicted_BFA1000, Period, Climate_model, ML_model, BFA1000_1991_2020)
+    
+    baseline_prediction |>
+      count(ML_model, Period)
+    
+    
+    final_prediction <- final_prediction |>
+      select(predicted_BFA1000, Period, Climate_model, ML_model, BFA1000_1991_2020) |>
+      bind_rows(baseline_prediction) |>
+      mutate(
+        Climate_model = factor(
+          Climate_model,
+          levels = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
+                     "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1")
+        ),
+        Period_num = case_when(
+          # Period == "1961-1990" ~ 1976,
+          Period == "1981-2010" ~ 1996,
+          Period == "1991-2020" ~ 2006,
+          Period == "2030"      ~ 2030,
+          Period == "2050"      ~ 2050,
+          Period == "2070"      ~ 2070,
+          Period == "2085"      ~ 2085,
+          TRUE ~ NA_real_
+        )
+      )
+    
+    # Compute per-ML-model smoothed lines
+    trend_data <- final_prediction |>
+      mutate(period_type = if_else(Period %in% c("1961-1990", "1981-2010", "1991-2020"), "baseline", "future")) |>
+      group_by(ML_model, period_type, Period_num) |>
+      summarise(predicted_BFA1000 = if_else(
+        period_type == "future",
+        mean(predicted_BFA1000, na.rm = TRUE),
+        predicted_BFA1000[1]  # use actual point from baseline
+      ), .groups = "drop") |>
+      group_by(ML_model) |>
+      arrange(Period_num) |>
+      group_modify(~{
+        fit <- loess(predicted_BFA1000 ~ Period_num, data = .x, span = 0.8)
+        smoothed <- data.frame(Period_num = seq(min(.x$Period_num), max(.x$Period_num), length.out = 100))
+        smoothed$predicted_BFA1000 <- predict(fit, newdata = smoothed)
+        smoothed$ML_model <- unique(.x$ML_model)
+        smoothed
+      }) |>
+      ungroup()
+    
+    # x_labels <- c(1970, 1990, 2010, 2030, 2050, 2070, 2090)
+    x_labels <- c(1990, 2010, 2030, 2050, 2070, 2090)
+    
+    scenario_p <- ggplot(final_prediction, aes(x = Period_num, y = predicted_BFA1000, color = Climate_model)) +
+      
+      # Add ML-model specific smoothed lines
+      geom_line(
+        data = trend_data,
+        aes(x = Period_num, y = predicted_BFA1000, group = ML_model, linetype = "Ensemble trend"),
+        inherit.aes = FALSE,
+        color = "#2b2b2b", size = 1.2, alpha = 0.3
+      ) +
+      
+      # Reference line
+      geom_hline(
+        aes(yintercept = BFA1000_1991_2020, linetype = "Observed (1991–2020)"),
+        data = final_prediction |> filter(Period == "1991-2020"),
+        color = "#2b2b2b", size = 0.8
+      ) +
+      
+      # ML model predictions
+      geom_point(size = 3, alpha = 0.8) +
+      
+      # Facet by ML model
+      facet_wrap(~ ML_model) +
+      
+      # X-axis as real timeline
+      scale_x_continuous(
+        breaks = x_labels,
+        labels = x_labels,
+        limits = c(1988, 2092)
+      ) +
+      
+      # Color legend for Climate Models
+      scale_color_manual(
+        values = custom_colors_GCM,
+        breaks = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
+                   "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1"),
+        name = "Climate data",
+        drop = FALSE,
+        guide = guide_legend(order = 1)
+      ) +
+      
+      # Linetype legend
+      scale_linetype_manual(
+        values = c("Observed (1991–2020)" = "dashed", "Ensemble trend" = "solid"),
+        # values = c("Ensemble trend" = "solid"),
+        name = NULL,
+        guide = guide_legend(
+          override.aes = list(
+            color = "#2b2b2b",
+            size = c(0.8, 1.2),
+            alpha = c(0.3, 1)
+            # size = c(0.8),
+            # alpha = c(0.3)
+          ),
+          order = 2,
+          keywidth = 1.8
+        )
+      ) +
+      
+      # Labels and theme
+      labs(
+        title = "Predicted BFAI Across Climate Models and Machine Learning Models",
+        x = "Year",
+        y = "Predicted BFAI"
+      ) +
+      theme_bw() +
+      theme(
+        legend.position = "right",
+        legend.text = element_text(size = 9),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_text(margin = margin(t = 15)),
+        strip.text = element_text(face = "bold")
+      ) #+
+      #coord_cartesian(ylim = c(0.05, 0.35))
+    
+    plot_name <- if (use_country == TRUE) {
+      paste0(out_path, "/scenarios/scenarios_", country_code, "_", ssp_use, "_all_models_predictions_for_scenarios_country.png")
+    } else {
+      paste0(out_path, "/scenarios/scenarios_", country_code, "_", ssp_use, "_all_models_predictions_for_scenarios.png")
+    }
+    ggsave(plot_name, plot = scenario_p, width = 3 * 140, height = 2 * 120, dpi = 600, units = 'mm')
+    
+    #-------------------------------------------------------------------------------
+    
+    # Ensemble scenario prediction on annual data
+    ens_scen_annual <- predict(ens, new_data = scenario_country_model) |>
+      bind_cols(scenario_country_model) |>
+      mutate(
+        ML_model = "ensemble mean",
+        predicted_BFA1000 = exp(.pred)
+      )
+    
+    
+    ens_scen <- ens_scen_annual |>
+      filter(Scenario == "ssp245") |>
+      group_by(GCM, Period, ML_model) |>
+      summarise(
+        predicted_BFA1000 = mean(predicted_BFA1000, na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      mutate(
+        Period = as.character(Period),
+        BFA1000_1991_2020 = bfa_reference
+      ) |>
+      rename(
+        Climate_model = GCM
+      )
+    
+    baseline_ens <- calibration_data |>
+      filter(Country == country_code) |>
+      mutate(
+        Period = case_when(
+          # Year %in% 1961:1990 ~ "1961-1990",
+          Year %in% 1981:2010 ~ "1981-2010",
+          Year %in% 1991:2020 ~ "1991-2020",
+          TRUE ~ NA_character_
+        )
+      ) |>
+      filter(!is.na(Period)) |>
+      group_by(Period) |>
+      summarise(
+        predicted_BFA1000 = exp(mean(log_BFA1000, na.rm = TRUE)),
+        BFA1000_1991_2020 = bfa_reference,
+        .groups = "drop"
+      ) |>
+      mutate(
+        Climate_model = "Baseline",
+        ML_model = "ensemble mean"
+      )
+    
+    
+    ens_scen <- ens_scen |>
+      bind_rows(baseline_ens) |>
+      mutate(
+        Climate_model = factor(
+          Climate_model,
+          levels = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
+                     "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1")
+        ),
+        Period_num = case_when(
+          # Period == "1961-1990" ~ 1976,
+          Period == "1981-2010" ~ 1996,
+          Period == "1991-2020" ~ 2006,
+          Period == "2030"      ~ 2030,
+          Period == "2050"      ~ 2050,
+          Period == "2070"      ~ 2070,
+          Period == "2085"      ~ 2085,
+          TRUE ~ NA_real_
+        )
+      )
+    
+    mean_scenarios <- ens_scen |>
+      filter(Period %in% c("2030", "2050", "2070", "2085")) |>
+      group_by(Period, Period_num) |>
+      summarise(
+        predicted_BFA1000 = mean(predicted_BFA1000, na.rm = TRUE),
+        .groups = "drop"
+      )
+    
+    baseline_means <- ens_scen |>
+      # filter(Period %in% c("1961-1990", "1981-2010", "1991-2020")) |>
+      filter(Period %in% c("1981-2010", "1991-2020")) |>
+      select(Period, Period_num, predicted_BFA1000) |>
+      distinct()
+    
+    line_data <- bind_rows(baseline_means, mean_scenarios)
+    
+    
+    # Define numeric positions for each period
+    period_map <- c(
+      # "1961-1990" = 1976,
+      "1981-2010" = 1996,
+      "1991-2020" = 2006,
+      "2030"      = 2030,
+      "2050"      = 2050,
+      "2070"      = 2070,
+      "2085"      = 2085
     )
-  
-  # Extract components with corrected model names
-  data_scenarios <- data_scenarios |> 
-    mutate(
-      SSP = str_extract(Scenario, "SSP\\d+"),                        # Extract 'SSP' followed by numbers
-      SSP = str_replace_all(SSP, "SSP", ""),                         # Replace "SSP" from the name
-      SSP = if_else(is.na(SSP), "Baseline", SSP),                    # Assign "Observed" for NA SSP
-      Period = str_extract(Scenario, "\\d{4}(-\\d{4})?$"),           # Extract year or range
-      Model = str_extract(Scenario, "(?<=SSP\\d{3}_)[a-z0-9\\-_]+"), # Extract model name
-      Model = str_remove(Model, "_\\d{4}$"),                         # Remove year suffix from model
-      Model = str_replace_all(Model, "_", "-"),                      # Replace "_" with "-" for consistency
-      Model = if_else(is.na(Model), "Observed", Model)                # Assign "Observed" for NA SSP
-    ) |> select(-Variable, -Season, -Scenario)
-  
-  data_scenarios_wide <- data_scenarios |> 
-    pivot_wider(
-      names_from = Ccode,
-      values_from = Value
+    
+    # # Apply mapping
+    # ens_scen <- ens_scen |> mutate(Period_num = period_map[Period])
+    # line_data <- line_data |> mutate(Period_num = period_map[Period])
+    
+    # Fit loess model for smoothed line
+    loess_fit <- loess(predicted_BFA1000 ~ Period_num, data = line_data)
+    smoothed_data <- data.frame(
+      Period_num = seq(min(line_data$Period_num), max(line_data$Period_num), length.out = 100)
     )
+    smoothed_data$predicted_BFA1000 <- predict(loess_fit, newdata = smoothed_data)
+    
+    # Define desired tick marks and labels for x-axis
+    x_labels <- c(1990, 2010, 2030, 2050, 2070, 2090)
+    
+    # Create plot
+    scenario_p <- ggplot(ens_scen, aes(x = Period_num, y = predicted_BFA1000, color = Climate_model)) +
+      
+      # Ensemble trend line
+      geom_line(
+        data = smoothed_data,
+        aes(x = Period_num, y = predicted_BFA1000, linetype = "Ensemble trend"),
+        color = "#2b2b2b", size = 1.2, alpha = 0.3,
+        inherit.aes = FALSE
+      ) +
+      
+      # Reference line
+      geom_hline(
+        aes(yintercept = BFA1000_1991_2020, linetype = "Observed (1991–2020)"),
+        data = ens_scen |> filter(Period == "1991-2020"),
+        color = "#2b2b2b",
+        size = 0.8
+      ) +
+      
+      # Model points on top
+      geom_point(size = 3, alpha = 0.8) +
+      
+      # X axis scale
+      scale_x_continuous(
+        breaks = x_labels,
+        labels = x_labels,
+        limits = c(1988, 2092)
+      ) +
+      
+      # Color legend for models
+      scale_color_manual(
+        values = custom_colors_GCM,
+        breaks = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
+                   "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1"),
+        name = "Climate data",
+        guide = guide_legend(order = 1)
+      ) +
+      
+      # Linetype legend for both lines
+      scale_linetype_manual(
+        values = c("Observed (1991–2020)" = "dashed", "Ensemble trend" = "solid"),
+        # values = c("Ensemble trend" = "solid"),
+        name = NULL,
+        guide = guide_legend(
+          override.aes = list(
+            color = "#2b2b2b",
+            size = c(0.8, 1.2),
+            alpha = c(0.3, 1)
+            # size = c(0.8),
+            # alpha = c(0.3)
+          ),
+          order = 2,
+          keywidth = 1.8
+        )
+      ) +
+      
+      # Labels and theme
+      labs(
+        title = "Ensemble mean model of BFAI",
+        x = "Year",
+        y = "Predicted BFAI"
+      ) +
+      
+      theme_bw() +
+      theme(
+        legend.position = "right",
+        legend.text = element_text(size = 9),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_text(margin = margin(t = 15)),
+        strip.text = element_text(face = "bold")
+      )
+    
+    # Save the plot
+    if (use_country == TRUE) {
+      plot_name <- paste0(out_path, "/scenarios/scenarios_", country_code, "_", ssp_use, "_all_models_predictions_for_scenarios_ensemble_mean_country.png")
+    } else {
+      plot_name <- paste0(out_path, "/scenarios/scenarios_", country_code, "_", ssp_use, "_all_models_predictions_for_scenarios_ensemble_mean.png")
+    }
+    ggsave(plot_name, plot = scenario_p, width = 140, height = 100, dpi = 600, units = 'mm')
+  }
   
-  # Add Year
-  data_scenarios_wide <- data_scenarios_wide |> 
-    mutate(Year = case_when(
-      Period == "1961-1990" ~ 1976,
-      Period == "1981-2010" ~ 1996,
-      Period == "1991-2020" ~ 2006,
-      Period == "2030"      ~ 2030,
-      Period == "2050"      ~ 2050,
-      Period == "2070"      ~ 2070,
-      Period == "2085"      ~ 2085,
-      TRUE ~ NA_real_  # fallback for unexpected Period values
-    )) |> 
-    relocate(Year, .after = Period)
+  countries <- calibration_data |>
+    distinct(Country) |>
+    pull(Country)
   
-  # Extract mean values for Pines, Conifers, Broadleaved and BFA1000 for 1991-2020 in CZE
-  cze_summary <- clean_data |> 
-    filter(Country == "CZE") |> 
-    summarise(
-      Pines = mean(Pines, na.rm = TRUE),
-      Conifers = mean(Conifers, na.rm = TRUE),
-      Broadleaved = mean(Broadleaved, na.rm = TRUE),
-      BFA1000_1991_2020 = exp(mean(log_BFA1000[Year %in% 1991:2020], na.rm = TRUE))
-    )
-  
-  # Add the extracted values to data_scenarios_wide
-  data_scenarios_wide <- data_scenarios_wide |> 
-    mutate(
-      Country = "CZE",
-      Pines = cze_summary$Pines,
-      Conifers = cze_summary$Conifers,
-      Broadleaved = cze_summary$Broadleaved,
-      BFA1000_1991_2020 = cze_summary$BFA1000_1991_2020
-    )
-  
-  # Loop through the 12 models from matched_results and collect predictions
-  for (i in seq_len(nrow(matched_results))) {
-    
-    # Extract the model information
-    model_id <- matched_results$wflow_id[i]
-    
-    set.seed(seed)
-    # Get the best configuration for the current model
-    best_results <- race_results |>  
-      extract_workflow_set_result(model_id) |>  
-      select_best(metric = "rmse")
-    
-    # Finalize the model with the best hyperparameters
-    set.seed(seed)
-    final_model <- race_results |> 
-      extract_workflow(model_id) |>  
-      finalize_workflow(best_results) |>  
-      fit(data = calibration_data)
-    
-    tmp <- predict(final_model, new_data = data_scenarios_wide) |> 
-      bind_cols(data_scenarios_wide) |> 
-      mutate(Model_Type = model_id)
-    
-    # Combine predictions into a single dataframe
-    if(i == 1){
-      final_prediction <- tmp
-    }else{
-      final_prediction <- bind_rows(final_prediction, tmp)
+  ssps <- c("ssp126", "ssp245", "ssp370", "ssp585")
+
+  for (country_code in countries) {
+    for (ssp_use in ssps) {
+      make_country_scenario_plots(country_code, ssp_use)
     }
   }
   
-  final_prediction <- final_prediction |> 
-    mutate(predicted_BFA1000 = exp(.pred)) |> 
-    relocate(predicted_BFA1000, .before = 2)
+  # make_country_scenario_plots("PRT", "ssp245")
   
-  final_prediction <- final_prediction |> 
-    select(predicted_BFA1000, Period, Model, Model_Type, BFA1000_1991_2020) |> 
-    rename(Climate_model = Model, ML_model = Model_Type)
   
-  glimpse(final_prediction)
-  
-  # Map Observed to Baseline and add Period_num
-  final_prediction <- final_prediction |>
-    mutate(
-      Climate_model = if_else(Climate_model == "Observed", "Baseline", Climate_model),
-      Climate_model = factor(
-        Climate_model,
-        levels = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
-                   "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1")
-      ),
-      Period_num = case_when(
-        Period == "1961-1990" ~ 1976,
-        Period == "1981-2010" ~ 1996,
-        Period == "1991-2020" ~ 2006,
-        Period == "2030"      ~ 2030,
-        Period == "2050"      ~ 2050,
-        Period == "2070"      ~ 2070,
-        Period == "2085"      ~ 2085,
-        TRUE ~ NA_real_
-      )
-    )
-  
-  # Compute per-ML-model smoothed lines
-  trend_data <- final_prediction |>
-    mutate(period_type = if_else(Period %in% c("1961-1990", "1981-2010", "1991-2020"), "baseline", "future")) |>
-    group_by(ML_model, period_type, Period_num) |>
-    summarise(predicted_BFA1000 = if_else(
-      period_type == "future",
-      mean(predicted_BFA1000, na.rm = TRUE),
-      predicted_BFA1000[1]  # use actual point from baseline
-    ), .groups = "drop") |>
-    group_by(ML_model) |>
-    arrange(Period_num) |>
-    group_modify(~{
-      fit <- loess(predicted_BFA1000 ~ Period_num, data = .x, span = 0.8)
-      smoothed <- data.frame(Period_num = seq(min(.x$Period_num), max(.x$Period_num), length.out = 100))
-      smoothed$predicted_BFA1000 <- predict(fit, newdata = smoothed)
-      smoothed$ML_model <- unique(.x$ML_model)
-      smoothed
-    }) |>
-    ungroup()
-  
-  x_labels <- c(1970, 1990, 2010, 2030, 2050, 2070, 2090)
-  
-  scenario_p <- ggplot(final_prediction, aes(x = Period_num, y = predicted_BFA1000, color = Climate_model)) +
-    
-    # Add ML-model specific smoothed lines
-    geom_line(
-      data = trend_data,
-      aes(x = Period_num, y = predicted_BFA1000, group = ML_model, linetype = "Ensemble trend"),
-      inherit.aes = FALSE,
-      color = "#2b2b2b", size = 1.2, alpha = 0.3
-    ) +
-    
-    # Reference line
-    geom_hline(
-      aes(yintercept = BFA1000_1991_2020, linetype = "Observed (1991–2020)"),
-      data = final_prediction |> filter(Period == "1991-2020"),
-      color = "#2b2b2b", size = 0.8
-    ) +
-    
-    # ML model predictions
-    geom_point(size = 3, alpha = 0.8) +
-    
-    # Facet by ML model
-    facet_wrap(~ ML_model) +
-    
-    # X-axis as real timeline
-    scale_x_continuous(
-      breaks = x_labels,
-      labels = x_labels,
-      limits = c(1968, 2092)
-    ) +
-    
-    # Color legend for Climate Models
-    scale_color_manual(
-      values = custom_colors_GCM,
-      breaks = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
-                 "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1"),
-      name = "Climate data",
-      drop = FALSE,
-      guide = guide_legend(order = 1)
-    ) +
-    
-    # Linetype legend
-    scale_linetype_manual(
-      values = c("Observed (1991–2020)" = "dashed", "Ensemble trend" = "solid"),
-      # values = c("Ensemble trend" = "solid"),
-      name = NULL,
-      guide = guide_legend(
-        override.aes = list(
-          color = "#2b2b2b",
-          size = c(0.8, 1.2),
-          alpha = c(0.3, 1)
-          # size = c(0.8),
-          # alpha = c(0.3)
-        ),
-        order = 2,
-        keywidth = 1.8
-      )
-    ) +
-    
-    # Labels and theme
-    labs(
-      title = "Predicted BFAI Across Climate Models and Machine Learning Models",
-      x = "Year",
-      y = "Predicted BFAI"
-    ) +
-    theme_bw() +
-    theme(
-      legend.position = "right",
-      legend.text = element_text(size = 9),
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      axis.title.x = element_text(margin = margin(t = 15)),
-      strip.text = element_text(face = "bold")
-    ) +
-    coord_cartesian(ylim = c(0.05, 0.35))
-  
-  plot_name <- if (use_country == TRUE) {
-    paste0(out_path, "/all_models_predictions_for_scenarios_country.png")
-  } else {
-    paste0(out_path, "/all_models_predictions_for_scenarios.png")
-  }
-  ggsave(plot_name, plot = scenario_p, width = 3 * 140, height = 2 * 120, dpi = 600, units = 'mm')
-  
-  #-------------------------------------------------------------------------------
-  ens_scen <- predict(ens, new_data = data_scenarios_wide) |> 
-    bind_cols(data_scenarios_wide) |> 
-    mutate(Model_Type = "ensemble mean")
-  
-  ens_scen <- ens_scen |> 
-    mutate(predicted_BFA1000 = exp(.pred)) |> 
-    relocate(predicted_BFA1000, .before = 2)
-  
-  ens_scen <- ens_scen |> 
-    select(predicted_BFA1000, Period, Model, Model_Type, BFA1000_1991_2020) |> 
-    rename(Climate_model = Model, ML_model = Model_Type)
-  
-  glimpse(ens_scen)
-  
-  # Update the Climate_model column to replace "Observed" with "Baseline"
-  ens_scen <- ens_scen |> 
-    mutate(Climate_model = ifelse(Climate_model == "Observed", "Baseline", Climate_model))
-  
-  clean_data |> filter(Year %in% 1991:2020) |> filter(Country == "CZE") |> pull(log_BFA1000) |> mean() |> exp()
-  
-  final_prediction |> filter(Period == "1991-2020") |> pull(BFA1000_1991_2020)
-  
-  # Compute period-wise mean for future periods
-  mean_scenarios <- ens_scen |> 
-    filter(Period %in% c("2030", "2050", "2070", "2085")) |> 
-    group_by(Period) |> 
-    summarize(predicted_BFA1000 = mean(predicted_BFA1000), .groups = "drop")
-  
-  # Get distinct baseline periods
-  baseline_means <- ens_scen |> 
-    filter(Period %in% c("1961-1990", "1981-2010", "1991-2020")) |> 
-    select(Period, predicted_BFA1000) |> 
-    distinct()
-  
-  # Combine for smoothing
-  line_data <- bind_rows(baseline_means, mean_scenarios)
-  
-  # Define numeric positions for each period
-  period_map <- c(
-    "1961-1990" = 1976,
-    "1981-2010" = 1996,
-    "1991-2020" = 2006,
-    "2030"      = 2030,
-    "2050"      = 2050,
-    "2070"      = 2070,
-    "2085"      = 2085
-  )
-  
-  # Apply mapping
-  ens_scen <- ens_scen |> mutate(Period_num = period_map[Period])
-  line_data <- line_data |> mutate(Period_num = period_map[Period])
-  
-  # Fit loess model for smoothed line
-  loess_fit <- loess(predicted_BFA1000 ~ Period_num, data = line_data)
-  smoothed_data <- data.frame(
-    Period_num = seq(min(line_data$Period_num), max(line_data$Period_num), length.out = 100)
-  )
-  smoothed_data$predicted_BFA1000 <- predict(loess_fit, newdata = smoothed_data)
-  
-  # Define desired tick marks and labels for x-axis
-  x_labels <- c(1970, 1990, 2010, 2030, 2050, 2070, 2090)
-  
-  # Create plot
-  scenario_p <- ggplot(ens_scen, aes(x = Period_num, y = predicted_BFA1000, color = Climate_model)) +
-    
-    # Ensemble trend line
-    geom_line(
-      data = smoothed_data,
-      aes(x = Period_num, y = predicted_BFA1000, linetype = "Ensemble trend"),
-      color = "#2b2b2b", size = 1.2, alpha = 0.3,
-      inherit.aes = FALSE
-    ) +
-    
-    # Reference line
-    geom_hline(
-      aes(yintercept = BFA1000_1991_2020, linetype = "Observed (1991–2020)"),
-      data = final_prediction |> filter(Period == "1991-2020"),
-      color = "#2b2b2b", size = 0.8
-    ) +
-    
-    # Model points on top
-    geom_point(size = 3, alpha = 0.8) +
-    
-    # X axis scale
-    scale_x_continuous(
-      breaks = x_labels,
-      labels = x_labels,
-      limits = c(1968, 2092)
-    ) +
-    
-    # Color legend for models
-    scale_color_manual(
-      values = custom_colors_GCM,
-      breaks = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
-                 "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1"),
-      name = "Climate data",
-      guide = guide_legend(order = 1)
-    ) +
-    
-    # Linetype legend for both lines
-    scale_linetype_manual(
-      values = c("Observed (1991–2020)" = "dashed", "Ensemble trend" = "solid"),
-      # values = c("Ensemble trend" = "solid"),
-      name = NULL,
-      guide = guide_legend(
-        override.aes = list(
-          color = "#2b2b2b",
-          size = c(0.8, 1.2),
-          alpha = c(0.3, 1)
-          # size = c(0.8),
-          # alpha = c(0.3)
-        ),
-        order = 2,
-        keywidth = 1.8
-      )
-    ) +
-    
-    # Labels and theme
-    labs(
-      title = "Ensemble mean model of BFAI",
-      x = "Year",
-      y = "Predicted BFAI"
-    ) +
-    
-    theme_bw() +
-    theme(
-      legend.position = "right",
-      legend.text = element_text(size = 9),
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      axis.title.x = element_text(margin = margin(t = 15)),
-      strip.text = element_text(face = "bold")
-    )
-  
-  # Save the plot
-  if (use_country == TRUE) {
-    plot_name <- paste0(out_path, "/all_models_predictions_for_scenarios_ensemble_mean_country.png")
-  } else {
-    plot_name <- paste0(out_path, "/all_models_predictions_for_scenarios_ensemble_mean.png")
-  }
-  ggsave(plot_name, plot = scenario_p, width = 140, height = 100, dpi = 600, units = 'mm')
-  
+  #-----------------------------------------------------------------------------
   # --- RMSE ---
   rmse_individual <- all_model_predictions_df |> 
     group_by(model, dataset) |> 
@@ -1334,4 +1579,4 @@ for(run_ID in 1:35){
   
   # Save the final ensemble model (either blended or meta-model-based)
   saveRDS(ens, file = paste0(out_path, "/ensemble_model.rds"))
-}
+#}

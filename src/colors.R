@@ -14,6 +14,39 @@ custom_colors_country <- c(
   "SWE" = "#1D3557"   # Sweden - cool dark blue
 )
 
+
+custom_colors_country <- c(
+  # Northern / cool & wet (deep blues → blue-teal)
+  "NOR" = "#1B3A5F",
+  "SWE" = "#2C5282",
+  "FIN" = "#3B6EA5",
+  "DNK" = "#4C7FAF",
+  "LTU" = "#5A8FB8",
+  "LVA" = "#6FA3C0",
+  
+  # Central / temperate (teal → green)
+  "DEU" = "#2A9D8F",
+  "POL" = "#3AAFA9",
+  "CZE" = "#4DB6AC",
+  "SVK" = "#66C2A5",
+  "AUT" = "#52B788",
+  "CHE" = "#74C69D",
+  "SVN" = "#95D5B2",
+  "BEL" = "#83C5BE",
+  
+  # Southern / warm & dry (orange → red)
+  "FRA" = "#F4A261",
+  "HRV" = "#F6BD60",
+  "ROU" = "#F7A072",
+  "BGR" = "#F28482",
+  "ITA" = "#E76F51",
+  "ESP" = "#E63946",
+  "PRT" = "#D62828",
+  "GRC" = "#C1121F"
+)
+
+
+
 # Create a custom color palette with a reference line entry
 custom_colors_GCM <- c(
   "Baseline" = "#E63946",

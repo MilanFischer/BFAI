@@ -1,0 +1,27 @@
+predictors:
+- Country
+- Conifers
+- VPD_year
+- Pines
+- VPD_ONDJFM
+- AWP0_40_S2_plus_AMJJAS
+- FWI_FD_ONDJFM
+- AWD0_40_sum_AMJJAS
+- DFM10H_u10_ONDJFM
+- DFM10H_u10_NDJF
+- DFM10H_u8_ONDJFM
+- DFM10H_u8_NDJF
+- AWD0_40_sum_ONDJFM
+- AWP0_40_S3_plus_year
+- FWI_3_plus_ONDJFM
+- AWR0_40_u30_NDJF
+- FWI_6_year
+- AWD0_40_sum_NDJF
+- AWP0_40_S2_plus_ONDJFM
+- FWI_3_plus_NDJF
+use_country: yes
+use_year: no
+target: log_BFA1000
+cor_thresh: 0.9
+metamodel: no
+seed: 1234.0

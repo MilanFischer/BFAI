@@ -1,0 +1,13 @@
+predictors:
+- VPD_year
+- Country
+- Conifers
+- Pines
+- FWI_3_plus_NDJF
+- FWI_6_ONDJFM
+use_country: yes
+use_year: no
+target: log_BFA1000
+cor_thresh: 0.7
+metamodel: no
+seed: 1234.0

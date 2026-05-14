@@ -8,12 +8,9 @@
 # Ideas
 # If use_country == TRUE -> exclude broadleaved, coniferous and pines – done
 # Show correlation matrix of predictors for 001 and 033
-# Add mean line for future prediction figure - done
-# Ask for annual data – done
-# Can we get additional countries – in the future  yes, we will see how long it will take.
 
 #for(run_ID in 43){
-  run_ID <- 47
+  run_ID <- 48
   # Clear workspace
   rm(list = setdiff(ls(), "run_ID"))
   
@@ -52,8 +49,10 @@
   # Higher values = more thorough optimization
   
   grid_1 <- 5    # Initial coarse search, 50
-  grid_2 <- 10   # ANOVA racing refinement, 100
+  grid_2 <- 5    # ANOVA racing refinement, 100
   
+  # Number of repeated ensemble blending runs for stability assessment (e.g. 20)
+  n_ens_reps <- 1
   
   # Separate calibration and verification datasets
   calibration_years <- seq(1990, 2024)[(seq(1990, 2024) - 1990) %% 3 != 2]  # 1st and 2nd years in each 3-year block
@@ -123,6 +122,9 @@
   clean_data <- clean_data |> 
     select(-starts_with(c("TMAX_", "TMIN_", "TAVG_", "RH_", "RHmin", "PREC", "SRAD", "WIND")),
            -matches("ONDJFM|NDJF"))
+  
+  # clean_data <- clean_data |> 
+  #   select(-matches("ONDJFM|NDJF"))
   
   clean_data <- clean_data |> 
     rename(
@@ -224,17 +226,6 @@
     
     final_cols <- c(target, vip_df$Predictors)
     
-    # keep_cols <- unique(c("Country", "Year", final_cols))
-    # 
-    # calibration_data <- calibration_data |>
-    #   select(any_of(keep_cols))
-    # 
-    # verification_data <- verification_data |>
-    #   select(any_of(keep_cols))
-
-    # calibration_data <- calibration_data |> select(all_of(if ("Year" %in% final_cols) c("Year", setdiff(final_cols, "Year")) else c("Year", final_cols)))
-    # verification_data <- verification_data |> select(all_of(if ("Year" %in% final_cols) c("Year", setdiff(final_cols, "Year")) else c("Year", final_cols)))
-    
     predictors <- setdiff(final_cols, target)
     
     # Save predictors and seed to config.yml
@@ -264,20 +255,8 @@
   # Create a formula dynamically
   formula <- as.formula(paste(target, "~", paste(predictors, collapse = " + ")))
   
-  # if (use_country == TRUE) {
-  #   no_pre_proc_rec <- recipe(formula, data = calibration_data) |>
-  #     step_nzv(all_predictors()) |>
-  #     step_lencode_glm(Country, outcome = target)
-  # } else {
-  #   no_pre_proc_rec <- recipe(formula, data = calibration_data) |>
-  #     # Retain Country even if not used
-  #     update_role(Country, new_role = "ID") |>
-  #     step_nzv(all_predictors())
-  # }
-  
   if (use_country == TRUE) {
     no_pre_proc_rec <- recipe(formula, data = calibration_data) |>
-      update_role(Year, new_role = "ID") |>
       step_nzv(all_predictors()) |>
       step_lencode_glm(Country, outcome = target)
     
@@ -285,7 +264,6 @@
     no_pre_proc_rec <- recipe(formula, data = calibration_data) |>
       step_nzv(all_predictors())
   }
-  
   
   ###############################################################
   
@@ -549,7 +527,9 @@
 
     #---------------------------------------------------------------------------
 
-    n_ens_reps <- 20
+    # n_ens_reps – Repeat ensemble blending multiple times with different seeds
+    # to improve stability and select the best-performing stack
+
     all_ens_models <- list()
     rmse_scores <- numeric(n_ens_reps)
 
@@ -617,7 +597,6 @@
         y = "Member"
       ) +
       lims(x = c(0, 0.4))
-
 
     # Save the plot
     if(use_country == TRUE){
@@ -702,7 +681,6 @@
     ),
     y_position = 5.5
     )
-  
   
   # Set country levels
   country_levels <- unique(ens_model_pred_df$Country)
@@ -1065,8 +1043,6 @@
       ) |>
       arrange(Scenario, GCM, Period, Year)
     
-
-    
     # Add static predictors needed by model
     country_summary <- clean_data |>
       filter(Country == country_code) |>
@@ -1102,7 +1078,6 @@
           str_replace_all("-", "_")
       )
     
-    
     final_prediction_annual <- NULL
     
     for (i in seq_len(nrow(matched_results))) {
@@ -1131,7 +1106,6 @@
       
       final_prediction_annual <- bind_rows(final_prediction_annual, tmp)
     }
-    
     
     final_prediction <- final_prediction_annual |>
       filter(Scenario == ssp_use) |>
@@ -1328,9 +1302,8 @@
         predicted_BFA1000 = exp(.pred)
       )
     
-    
     ens_scen <- ens_scen_annual |>
-      filter(Scenario == "ssp245") |>
+      filter(Scenario == ssp_use) |>
       group_by(GCM, Period, ML_model) |>
       summarise(
         predicted_BFA1000 = mean(predicted_BFA1000, na.rm = TRUE),
@@ -1365,7 +1338,6 @@
         Climate_model = "Baseline",
         ML_model = "ensemble mean"
       )
-    
     
     ens_scen <- ens_scen |>
       bind_rows(baseline_ens) |>
@@ -1414,11 +1386,7 @@
       "2070"      = 2070,
       "2085"      = 2085
     )
-    
-    # # Apply mapping
-    # ens_scen <- ens_scen |> mutate(Period_num = period_map[Period])
-    # line_data <- line_data |> mutate(Period_num = period_map[Period])
-    
+
     # Fit loess model for smoothed line
     loess_fit <- loess(predicted_BFA1000 ~ Period_num, data = line_data)
     smoothed_data <- data.frame(
@@ -1515,16 +1483,18 @@
     pull(Country)
   
   ssps <- c("ssp126", "ssp245", "ssp370", "ssp585")
+  
+  # To speed up
+  # ssps <-"ssp245"
+  countries <- c("CZE")
+  # countries <- c("AUT", "BGR", "CZE", "ESP", "FRA", "GRC", "ITA", "PRT", "ROU", "SWE")
 
   for (country_code in countries) {
     for (ssp_use in ssps) {
       make_country_scenario_plots(country_code, ssp_use)
     }
   }
-  
-  # make_country_scenario_plots("PRT", "ssp245")
-  
-  
+
   #-----------------------------------------------------------------------------
   # --- RMSE ---
   rmse_individual <- all_model_predictions_df |> 

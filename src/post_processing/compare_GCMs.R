@@ -191,11 +191,11 @@ p_srad <- scenario_forcing_long |>
     plot.title = element_text(face = "bold")
   )
 
-ggsave(
-  filename = file.path(out_dir, paste0(country_code, "_", file_type, "_SRAD_boxplots.png")),
-  plot = p_srad,
-  width = 14,
-  height = 8,
-  dpi = 300
-)
+# ggsave(
+#   filename = file.path(out_dir, paste0(country_code, "_", file_type, "_SRAD_boxplots.png")),
+#   plot = p_srad,
+#   width = 14,
+#   height = 8,
+#   dpi = 300
+# )
 

@@ -10,7 +10,7 @@
 # Show correlation matrix of predictors for 001 and 033
 
 #for(run_ID in 43){
-  run_ID <- 48
+  run_ID <- 49
   # Clear workspace
   rm(list = setdiff(ls(), "run_ID"))
   
@@ -48,8 +48,8 @@
   # Lower values = faster debugging
   # Higher values = more thorough optimization
   
-  grid_1 <- 5    # Initial coarse search, 50
-  grid_2 <- 5    # ANOVA racing refinement, 100
+  grid_ini <- 5    # Initial coarse search, 50
+  grid_race <- 5    # ANOVA racing refinement, 100
   
   # Number of repeated ensemble blending runs for stability assessment (e.g. 20)
   n_ens_reps <- 1
@@ -116,12 +116,12 @@
   clean_data <- clean_data |> 
     select(-c("FA_kha", "BFA_ha"))
   
-  # clean_data <- clean_data |> 
-  #   select(-starts_with(c("TMAX_", "TMIN_", "TAVG_", "RH_", "RHmin", "PREC", "SRAD", "WIND")))
+  clean_data <- clean_data |>
+    select(-starts_with(c("TMAX_", "TMIN_", "TAVG_", "RH_", "RHmin", "PREC", "SRAD", "WIND")))
   
-  clean_data <- clean_data |> 
-    select(-starts_with(c("TMAX_", "TMIN_", "TAVG_", "RH_", "RHmin", "PREC", "SRAD", "WIND")),
-           -matches("ONDJFM|NDJF"))
+  # clean_data <- clean_data |> 
+  #   select(-starts_with(c("TMAX_", "TMIN_", "TAVG_", "RH_", "RHmin", "PREC", "SRAD", "WIND")),
+  #          -matches("ONDJFM|NDJF"))
   
   # clean_data <- clean_data |> 
   #   select(-matches("ONDJFM|NDJF"))
@@ -360,7 +360,7 @@
     workflow_map(
       seed = seed,
       resamples = cv_folds,
-      grid = grid_1, # Reduced grid size for debugging, otherwise set >50
+      grid = grid_ini, # Reduced grid size for debugging, otherwise set >50
       control = grid_ctrl
     )
   
@@ -395,7 +395,7 @@
       "tune_race_anova",
       seed = seed,
       resamples = cv_folds,
-      grid = grid_2, # 100
+      grid = grid_race, # e.g. 100
       control = race_ctrl
     )
   

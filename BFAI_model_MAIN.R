@@ -9,6 +9,8 @@
 # If use_country == TRUE -> exclude broadleaved, coniferous and pines – done
 # Show correlation matrix of predictors for 001 and 033
 
+library(tidyverse)
+
 start_ID <- 1
 
 runs <- tidyr::crossing(
@@ -24,13 +26,14 @@ runs <- tidyr::crossing(
 ) |>
   mutate(
     run_ID = start_ID - 1 + row_number(),
-    out_path = file.path(
-      "./outputs",
-      paste0("out_", sprintf("%03d", run_ID))
-    )
+    out_path = file.path("./outputs", paste0("out_", sprintf("%03d", run_ID)))
   )
 
-run_one_model <- function(cfg) {
+for (run_i in seq_len(nrow(runs))) {
+  
+  cfg <- runs[run_i, ]
+  
+  rm(list = setdiff(ls(), c("runs", "start_ID", "run_i", "cfg")))
   gc()
   
   source("./src/load_libraries.R")
@@ -41,28 +44,25 @@ run_one_model <- function(cfg) {
   source("./src/metafit_ens.R")
   source("./src/files_manage.R")
   
-  # Define the target variable
-  target      <<- "log_BFA1000"
-  
-  # Extract settings
-  use_country <<- cfg$use_country
-  use_meteo   <<- cfg$use_meteo
-  use_winter  <<- cfg$use_winter
-  use_year    <<- cfg$use_year
-  metamodel   <<- cfg$metamodel
-  cor_thresh  <<- cfg$cor_thresh
-  grid_ini    <<- cfg$grid_ini
-  grid_race   <<- cfg$grid_race
-  n_ens_reps  <<- cfg$n_ens_reps
-  out_path    <<- cfg$out_path
-  
-  dir.create(file.path(out_path, "scenarios"), recursive = TRUE, showWarnings = FALSE)
+  target      <- "log_BFA1000"
+  run_ID      <- cfg$run_ID
+  use_country <- cfg$use_country
+  use_meteo   <- cfg$use_meteo
+  use_winter  <- cfg$use_winter
+  use_year    <- cfg$use_year
+  metamodel   <- cfg$metamodel
+  cor_thresh  <- cfg$cor_thresh
+  grid_ini    <- cfg$grid_ini
+  grid_race   <- cfg$grid_race
+  n_ens_reps  <- cfg$n_ens_reps
+  out_path    <- cfg$out_path
   
   message("Running ", basename(out_path),
           " | cor_thresh = ", cor_thresh,
           " | use_country = ", use_country,
-          " | metamodel = ", metamodel)
+          " | use_meteo = ", use_meteo)
   
+  dir.create(file.path(out_path, "scenarios"), recursive = TRUE, showWarnings = FALSE)
   
   scenario_settings <- list(
     countries = c("CZE", "ESP", "GRC", "ITA", "PRT", "ROU", "SWE"),
@@ -188,6 +188,10 @@ run_one_model <- function(cfg) {
     
     use_country <- config$use_country
     
+    use_meteo <- config$use_meteo 
+    
+    use_winter <- config$use_winter
+    
     use_year <- config$use_year
     
     target <- config$target
@@ -195,6 +199,12 @@ run_one_model <- function(cfg) {
     cor_thresh <- config$cor_thresh
     
     metamodel <- config$metamodel
+    
+    grid_ini <- config$grid_ini
+    
+    grid_race <- config$grid_race
+    
+    n_ens_reps <- config$n_ens_reps
     
     seed <- config$seed
     
@@ -247,10 +257,15 @@ run_one_model <- function(cfg) {
     config <- list(
       predictors = predictors,
       use_country = use_country,
+      use_meteo = use_meteo,
+      use_winter = use_winter,
       use_year = use_year,
       target = target,
       cor_thresh = cor_thresh,
       metamodel = metamodel,
+      grid_ini = grid_ini,
+      grid_race = grid_race,
+      n_ens_reps = n_ens_reps,
       seed = seed
     )
     
@@ -1570,11 +1585,3 @@ run_one_model <- function(cfg) {
   saveRDS(ens, file = paste0(out_path, "/ensemble_model.rds"))
 }
 
-
-# =====================================================
-# EXECUTION
-# =====================================================
-
-for (i in seq_len(nrow(runs))) {
-  run_one_model(runs[i, ])
-}

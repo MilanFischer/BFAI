@@ -11,7 +11,7 @@
 
 library(tidyverse)
 
-start_ID <- 1
+start_ID <- 13
 
 runs <- tidyr::crossing(
   cor_thresh = seq(0.7, 0.95, 0.05),
@@ -20,6 +20,7 @@ runs <- tidyr::crossing(
   use_winter = c(TRUE),
   use_year = c(FALSE),
   metamodel = c(FALSE),
+  use_perturbation_audit = c(TRUE),
   grid_ini = c(50),
   grid_race = c(100),
   n_ens_reps = c(20)
@@ -29,7 +30,7 @@ runs <- tidyr::crossing(
     out_path = file.path("./outputs", paste0("out_", sprintf("%03d", run_ID)))
   )
 
-for (run_i in seq_len(nrow(runs))) {
+for (run_i in 1:nrow(runs)) {
   
   cfg <- runs[run_i, ]
   
@@ -41,21 +42,45 @@ for (run_i in seq_len(nrow(runs))) {
   source("./src/model_specification.R")
   source("./src/corellation_filter.R")
   source("./src/boruta.R")
+  source("./src/perturbation_audit.R")
   source("./src/metafit_ens.R")
   source("./src/files_manage.R")
   
-  target      <- "log_BFA1000"
-  run_ID      <- cfg$run_ID
-  use_country <- cfg$use_country
-  use_meteo   <- cfg$use_meteo
-  use_winter  <- cfg$use_winter
-  use_year    <- cfg$use_year
-  metamodel   <- cfg$metamodel
-  cor_thresh  <- cfg$cor_thresh
-  grid_ini    <- cfg$grid_ini
-  grid_race   <- cfg$grid_race
-  n_ens_reps  <- cfg$n_ens_reps
-  out_path    <- cfg$out_path
+  target                  <- "log_BFA1000"
+  run_ID                  <- cfg$run_ID
+  use_country             <- cfg$use_country
+  use_meteo               <- cfg$use_meteo
+  use_winter              <- cfg$use_winter
+  use_year                <- cfg$use_year
+  metamodel               <- cfg$metamodel
+  cor_thresh              <- cfg$cor_thresh
+  use_perturbation_audit  <- cfg$use_perturbation_audit
+  grid_ini                <- cfg$grid_ini
+  grid_race               <- cfg$grid_race
+  n_ens_reps              <- cfg$n_ens_reps
+  out_path                <- cfg$out_path
+  
+  # perturbation_audit_settings <- list(
+  #   n_rows_per_country = 5,
+  #   n_steps = 25,
+  #   max_multiplier = 2.0,
+  #   max_log_increase = log(100),
+  #   max_step_jump = log(10),
+  #   min_monotonic_share = 0.50,
+  #   n_keep_stable_models = 8,
+  #   seed = 123
+  # )
+  
+  perturbation_audit_settings <- list(
+    n_rows_per_country = 5,
+    n_steps = 25,
+    max_multiplier = 2.0,
+    max_log_increase = log(20),
+    max_step_jump = log(3),
+    min_monotonic_share = 0.80,
+    n_keep_stable_models = 6,
+    seed = 123
+  )
   
   message("Running ", basename(out_path),
           " | cor_thresh = ", cor_thresh,
@@ -200,6 +225,8 @@ for (run_i in seq_len(nrow(runs))) {
     
     metamodel <- config$metamodel
     
+    use_perturbation_audit  <- config$use_perturbation_audit
+    
     grid_ini <- config$grid_ini
     
     grid_race <- config$grid_race
@@ -263,6 +290,7 @@ for (run_i in seq_len(nrow(runs))) {
       target = target,
       cor_thresh = cor_thresh,
       metamodel = metamodel,
+      use_perturbation_audit = use_perturbation_audit,
       grid_ini = grid_ini,
       grid_race = grid_race,
       n_ens_reps = n_ens_reps,
@@ -519,12 +547,44 @@ for (run_i in seq_len(nrow(runs))) {
   # --------------
   # Ensemble mean
   if(metamodel == FALSE){
-    set.seed(seed)
-    models_stack <-
-      stacks() |>
-      add_candidates(race_results)
+    # set.seed(seed)
+    # models_stack <-
+    #   stacks() |>
+    #   add_candidates(race_results)
+    # 
+    # models_stack
     
-    models_stack
+    set.seed(seed)
+    
+    if (use_perturbation_audit) {
+      
+      perturbation_audit_output <- run_perturbation_audit_for_stacking(
+        race_results = race_results,
+        matched_results = matched_results,
+        calibration_data = calibration_data,
+        predictors = predictors,
+        out_path = out_path,
+        settings = perturbation_audit_settings,
+        seed = seed
+      )
+      
+      race_results_for_stack <- perturbation_audit_output$race_results_for_stack
+      robustness_table       <- perturbation_audit_output$robustness_table
+      robust_model_ids       <- perturbation_audit_output$robust_model_ids
+      
+      matched_results_for_scenarios <- matched_results |>
+        dplyr::filter(wflow_id %in% robust_model_ids)
+      
+    } else {
+      
+      race_results_for_stack <- race_results
+      robustness_table <- NULL
+      robust_model_ids <- matched_results$wflow_id
+      matched_results_for_scenarios <- matched_results
+    }
+    
+    models_stack <- stacks() |>
+      add_candidates(race_results_for_stack)
     
     # filtered_results <- race_results |>
     #   filter(wflow_id != "MARS")
@@ -613,20 +673,24 @@ for (run_i in seq_len(nrow(runs))) {
       mutate(label = factor(label, levels = unique(label)))  # optional
     
     weights_labeled <- weights_labeled |>
-      arrange(desc(weight)) |>
-      mutate(member_rank = row_number())  # this will be used as y-axis
+      dplyr::filter(is.finite(weight), weight > 1e-6) |>
+      dplyr::arrange(desc(weight)) |>
+      dplyr::mutate(member_rank = dplyr::row_number())  # this will be used as y-axis
     
-    stack_rank <- ggplot(weights_labeled, aes(x = weight, y = reorder(member_rank, weight))) +
+    stack_rank <- ggplot(
+      weights_labeled,
+      aes(x = weight, y = reorder(member_rank, weight))
+    ) +
       geom_col(aes(fill = label)) +
       geom_text(aes(x = weight + 0.01, label = label), hjust = 0) +
       theme_bw() +
       theme(legend.position = "none") +
       labs(
-        title = paste0("Penalty = ", signif(ens$penalty$penalty, 3)),  # <- Penalty added here
+        title = paste0("Penalty = ", signif(ens$penalty$penalty, 3)),
         x = "Stacking Coefficient",
         y = "Member"
       ) +
-      lims(x = c(0, 0.4))
+      coord_cartesian(xlim = c(0, max(weights_labeled$weight, na.rm = TRUE) * 1.5))
     
     # Save the plot
     if(use_country == TRUE){
@@ -1109,10 +1173,11 @@ for (run_i in seq_len(nrow(runs))) {
     
     final_prediction_annual <- NULL
     
-    for (i in seq_len(nrow(matched_results))) {
+    
+    for (i in seq_len(nrow(matched_results_for_scenarios))) {
       
-      model_id <- matched_results$wflow_id[i]
-      
+      model_id <- matched_results_for_scenarios$wflow_id[i]
+
       set.seed(seed)
       
       best_results <- race_results |>
@@ -1416,6 +1481,11 @@ for (run_i in seq_len(nrow(runs))) {
     )
     
     # Fit loess model for smoothed line
+    line_data <- line_data |>
+      dplyr::filter(
+        is.finite(predicted_BFA1000),
+        is.finite(Period_num)
+      )
     loess_fit <- loess(predicted_BFA1000 ~ Period_num, data = line_data)
     smoothed_data <- data.frame(
       Period_num = seq(min(line_data$Period_num), max(line_data$Period_num), length.out = 100)

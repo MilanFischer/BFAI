@@ -11,12 +11,12 @@
 
 library(tidyverse)
 
-start_ID <- 13
+start_ID <- 7
 
 runs <- tidyr::crossing(
   cor_thresh = seq(0.7, 0.95, 0.05),
-  use_country = c(TRUE),
-  use_meteo = c(TRUE, FALSE),
+  use_country = c(FALSE),
+  use_meteo = c(FALSE),
   use_winter = c(TRUE),
   use_year = c(FALSE),
   metamodel = c(FALSE),
@@ -71,14 +71,24 @@ for (run_i in 1:nrow(runs)) {
   #   seed = 123
   # )
   
+  # perturbation_audit_settings <- list(
+  #   n_rows_per_country = 5,
+  #   n_steps = 25,
+  #   max_multiplier = 2.0,
+  #   max_log_increase = log(20),
+  #   max_step_jump = log(3),
+  #   min_monotonic_share = 0.80,
+  #   seed = 123
+  # )
+  
+  
   perturbation_audit_settings <- list(
     n_rows_per_country = 5,
     n_steps = 25,
-    max_multiplier = 2.0,
-    max_log_increase = log(20),
-    max_step_jump = log(3),
-    min_monotonic_share = 0.80,
-    n_keep_stable_models = 6,
+    max_multiplier = 1.8,
+    max_log_increase = log(50),
+    max_step_jump = log(4),
+    min_monotonic_share = 0.70,
     seed = 123
   )
   
@@ -90,7 +100,7 @@ for (run_i in 1:nrow(runs)) {
   dir.create(file.path(out_path, "scenarios"), recursive = TRUE, showWarnings = FALSE)
   
   scenario_settings <- list(
-    countries = c("CZE", "ESP", "GRC", "ITA", "PRT", "ROU", "SWE"),
+    countries = c("AUT", "BEL", "BGR", "CHE", "CZE", "DEU", "DNK", "ESP", "FIN", "FRA", "GRC", "HRV", "ITA", "LTU", "LVA", "NOR", "POL", "PRT", "ROU", "SVK", "SVN", "SWE"),
     ssps = c("ssp126", "ssp245", "ssp370", "ssp585")
   )
   
@@ -558,6 +568,7 @@ for (run_i in 1:nrow(runs)) {
     
     if (use_perturbation_audit) {
       
+      # First try: use the prescribed perturbation-audit settings
       perturbation_audit_output <- run_perturbation_audit_for_stacking(
         race_results = race_results,
         matched_results = matched_results,
@@ -568,12 +579,48 @@ for (run_i in 1:nrow(runs)) {
         seed = seed
       )
       
+      n_stack_candidates <- perturbation_audit_output$race_results_for_stack |>
+        stacks::stacks() # dummy-safe placeholder; do not use
+      
+      n_passed_candidates <- perturbation_audit_output$robustness_table |>
+        dplyr::filter(status == "pass") |>
+        nrow()
+      
+      # If too few candidates passed, relax the audit once.
+      # This avoids blend_predictions() failing with only one candidate.
+      if (n_passed_candidates < 3) {
+        
+        message(
+          "Only ", n_passed_candidates,
+          " candidate(s) passed the perturbation audit. ",
+          "Repeating audit with relaxed settings."
+        )
+        
+        perturbation_audit_settings_relaxed <- modifyList(
+          perturbation_audit_settings,
+          list(
+            max_multiplier = perturbation_audit_settings$max_multiplier * 0.8,
+            max_log_increase = perturbation_audit_settings$max_log_increase * 1.5,
+            max_step_jump = perturbation_audit_settings$max_step_jump * 1.5,
+            min_monotonic_share = perturbation_audit_settings$min_monotonic_share * 0.9
+          )
+        )
+        
+        perturbation_audit_output <- run_perturbation_audit_for_stacking(
+          race_results = race_results,
+          matched_results = matched_results,
+          calibration_data = calibration_data,
+          predictors = predictors,
+          out_path = out_path,
+          settings = perturbation_audit_settings_relaxed,
+          seed = seed
+        )
+      }
+      
       race_results_for_stack <- perturbation_audit_output$race_results_for_stack
       robustness_table       <- perturbation_audit_output$robustness_table
       robust_model_ids       <- perturbation_audit_output$robust_model_ids
-      
-      matched_results_for_scenarios <- matched_results |>
-        dplyr::filter(wflow_id %in% robust_model_ids)
+      matched_results_for_scenarios <- perturbation_audit_output$matched_results_for_scenarios
       
     } else {
       
@@ -1294,11 +1341,26 @@ for (run_i in 1:nrow(runs)) {
       group_by(ML_model) |>
       arrange(Period_num) |>
       group_modify(~{
-        fit <- loess(predicted_BFA1000 ~ Period_num, data = .x, span = 0.8)
-        smoothed <- data.frame(Period_num = seq(min(.x$Period_num), max(.x$Period_num), length.out = 100))
-        smoothed$predicted_BFA1000 <- predict(fit, newdata = smoothed)
-        smoothed$ML_model <- unique(.x$ML_model)
-        smoothed
+        
+        tmp <- .x |>
+          filter(is.finite(predicted_BFA1000), is.finite(Period_num))
+        
+        if (nrow(tmp) < 4 || n_distinct(tmp$Period_num) < 4) {
+          return(tibble())
+        }
+        
+        smoothed <- tibble(
+          Period_num = seq(min(tmp$Period_num), max(tmp$Period_num), length.out = 100)
+        )
+        
+        fit <- loess(predicted_BFA1000 ~ Period_num, data = tmp, span = 0.8)
+        
+        smoothed |>
+          mutate(
+            predicted_BFA1000 = predict(fit, newdata = smoothed),
+            ML_model = unique(tmp$ML_model)
+          ) |>
+          filter(is.finite(predicted_BFA1000))
       }) |>
       ungroup()
     

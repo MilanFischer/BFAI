@@ -7,6 +7,14 @@ run_pipeline <- function(run_i, runs) {
   
   cfg <- runs[run_i, ]
   
+  log_message <- function(...) {
+    message(
+      format(Sys.time(), "[%Y-%m-%d %H:%M:%S] "),
+      paste0(...)
+    )
+  }
+  
+  log_message("Loading libraries and sourcing functions")
   source("./src/load_libraries.R")
   source("./src/colors.R")
   source("./src/model_specification.R")
@@ -15,14 +23,6 @@ run_pipeline <- function(run_i, runs) {
   source("./src/perturbation_audit.R")
   source("./src/metafit_ens.R")
   source("./src/files_manage.R")
-  
-  
-  log_message <- function(...) {
-    log_message(
-      format(Sys.time(), "[%Y-%m-%d %H:%M:%S] "),
-      paste0(...)
-    )
-  }
   
   target                    <- "log_BFA1000"
   run_ID                    <- cfg$run_ID

@@ -2,6 +2,7 @@ library(tidyverse)
 library(furrr)
 library(future)
 
+source("./src/log_message.R")
 source("./src/colors.R")
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -235,7 +236,7 @@ make_country_scenario_plots <- function(country_code, ssp_use) {
   } else {
     paste0(out_path, "/scenarios/scenarios_", country_code, "_", ssp_use, "_all_models_predictions_for_scenarios.png")
   }
-  ggsave(plot_name, plot = scenario_p, width = 3 * 140, height = 2 * 120, dpi = 600, units = 'mm')
+  ggsave(plot_name, plot = scenario_p, width = 3 * 140, height = 2 * 120, dpi = 600, units = 'mm', device = ragg::agg_png)
   
   #-------------------------------------------------------------------------------
   
@@ -416,15 +417,8 @@ make_country_scenario_plots <- function(country_code, ssp_use) {
   } else {
     plot_name <- paste0(out_path, "/scenarios/scenarios_", country_code, "_", ssp_use, "_all_models_predictions_for_scenarios_ensemble_mean.png")
   }
-  ggsave(plot_name, plot = scenario_p, width = 140, height = 100, dpi = 600, units = 'mm')
+  ggsave(plot_name, plot = scenario_p, width = 140, height = 100, dpi = 600, units = 'mm', device = ragg::agg_png)
 }
-
-
-
-
-
-
-
 
 # countries <- calibration_data |>
 #   distinct(Country) |>
@@ -451,7 +445,7 @@ make_country_scenario_plots <- function(country_code, ssp_use) {
 
 options(future.globals.maxSize = 3 * 1024^3)
 
-message("Parallel ON for scenario plotting")
+log_message("Parallel ON for scenario plotting")
 
 future::plan(multisession, workers = num_cores_plot)
 gc()
@@ -472,4 +466,4 @@ furrr::future_walk(
 future::plan(sequential)
 gc()
 
-message("Parallel OFF after scenario plotting")
+log_message("Parallel OFF after scenario plotting")

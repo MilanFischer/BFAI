@@ -7,12 +7,7 @@ run_pipeline <- function(run_i, runs) {
   
   cfg <- runs[run_i, ]
   
-  log_message <- function(...) {
-    message(
-      format(Sys.time(), "[%Y-%m-%d %H:%M:%S] "),
-      paste0(...)
-    )
-  }
+  source("./src/log_message.R")
   
   log_message("Loading libraries and sourcing functions")
   source("./src/load_libraries.R")
@@ -268,7 +263,7 @@ run_pipeline <- function(run_i, runs) {
       theme_bw()
     
     # Save plot
-    ggsave(plot_name, plot = p, width = 8, height = 6, dpi = 300)
+    ggsave(plot_name, plot = p, width = 8, height = 6, dpi = 300, device = ragg::agg_png)
     
     final_cols <- c(target, vip_df$Predictors)
     
@@ -778,7 +773,7 @@ run_pipeline <- function(run_i, runs) {
     }else{
       plot_name <- paste0(out_path, "/stack_rank_ensemble.png")
     }
-    ggsave(plot_name, plot = stack_rank, width = 1 * 140, height = 1 * 130, dpi = 600, units = 'mm')
+    ggsave(plot_name, plot = stack_rank, width = 1 * 140, height = 1 * 130, dpi = 600, units = 'mm', device = ragg::agg_png)
     
     set.seed(seed)
     ens <- fit_members(ens)
@@ -999,7 +994,7 @@ run_pipeline <- function(run_i, runs) {
   }else{
     plot_name <- paste0(out_path,"/ensemble_models_predictions_log-scale.png")
   }
-  ggsave(plot_name, plot = final_plot_ens_pred, width = 1 * 160, height = 1 * 130, dpi = 600, units = 'mm')
+  ggsave(plot_name, plot = final_plot_ens_pred, width = 1 * 160, height = 1 * 130, dpi = 600, units = 'mm', device = ragg::agg_png)
   
   #-------------------------------------------------------------------------------
   
@@ -1165,7 +1160,7 @@ run_pipeline <- function(run_i, runs) {
   }else{
     plot_name <- paste0(out_path, "/all_models_predictions_log-scale.png")
   }
-  ggsave(plot_name, plot = final_p, width = 3 * 125*0.8, height = 4 * 110*0.8, dpi = 600, units = 'mm')
+  ggsave(plot_name, plot = final_p, width = 3 * 125*0.8, height = 4 * 110*0.8, dpi = 600, units = 'mm', device = ragg::agg_png)
   
   #-------------------------------------------------------------------------------
   # Climate scenario
@@ -1397,4 +1392,5 @@ run_pipeline <- function(run_i, runs) {
     show = TRUE
   )
   
+  log_message(basename(out_path), " completed successfully.")
 }

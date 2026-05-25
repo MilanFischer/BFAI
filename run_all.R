@@ -1,0 +1,97 @@
+################################################################################
+# run_all.R
+################################################################################
+
+library(tidyverse)
+library(callr)
+
+start_ID <- 1
+
+runs <- tidyr::crossing(
+  cor_thresh = seq(0.7, 0.95, 0.05),
+  use_country = c(TRUE),
+  use_meteo = c(FALSE),
+  use_winter = c(TRUE),
+  use_year = c(FALSE),
+  metamodel = c(FALSE),
+  use_perturbation_audit = c(TRUE),
+  use_synthetic_audit = c(FALSE),
+  use_scenario_audit = c(TRUE),
+  scenario_bfai_multiplier = c(10),
+  grid_ini = c(50), # 50
+  grid_race = c(100), # 100
+  n_ens_reps = c(20), # 20
+  num_cores_tune = 12,
+  num_cores_plot = 12
+) |>
+  mutate(
+    run_ID = start_ID - 1 + row_number(),
+    out_path = file.path(
+      "./outputs",
+      paste0("out_", sprintf("%03d", run_ID))
+    )
+  )
+
+################################################################################
+# Save runs table so pipeline_worker.R can read it
+################################################################################
+
+saveRDS(runs, "runs.rds")
+
+################################################################################
+# Launch each run in a fresh R session
+################################################################################
+
+for (run_i in 5:nrow(runs)) {
+  
+  message(
+    "\n=====================================================\n",
+    "Starting run ", run_i, " / ", nrow(runs),
+    "\n=====================================================\n"
+  )
+  
+  result <- tryCatch({
+    
+    callr::rscript(
+      script = "pipeline_worker.R",
+      cmdargs = as.character(run_i),
+      show = TRUE
+    )
+    
+    TRUE
+    
+  }, error = function(e) {
+    
+    message(
+      "\nERROR in run ", run_i, ":\n",
+      e$message
+    )
+    
+    FALSE
+  })
+  
+  if (result) {
+    
+    message(
+      "\nFinished run ", run_i, "\n"
+    )
+    
+  } else {
+    
+    message(
+      "\nRun ", run_i, " FAILED\n"
+    )
+    
+  }
+  
+}
+
+################################################################################
+# Cleanup
+################################################################################
+
+if (file.exists("runs.rds")) {
+  file.remove("runs.rds")
+}
+
+message("\nALL RUNS FINISHED\n")

@@ -1,41 +1,11 @@
-################################################################################
-# Must read
-# https://github.com/stevenpawley/colino
-# https://www.tmwr.org/
-# https://www.tidymodels.org/find/recipes/
-################################################################################
-
-# Ideas
-# If use_country == TRUE -> exclude broadleaved, coniferous and pines – done
-# Show correlation matrix of predictors for 001 and 033
-
-library(tidyverse)
-
-start_ID <- 13
-
-runs <- tidyr::crossing(
-  cor_thresh = seq(0.7, 0.95, 0.05),
-  use_country = c(TRUE),
-  use_meteo = c(FALSE),
-  use_winter = c(TRUE),
-  use_year = c(FALSE),
-  metamodel = c(FALSE),
-  use_perturbation_audit = c(TRUE),
-  grid_ini = c(50),
-  grid_race = c(100),
-  n_ens_reps = c(20)
-) |>
-  mutate(
-    run_ID = start_ID - 1 + row_number(),
-    out_path = file.path("./outputs", paste0("out_", sprintf("%03d", run_ID)))
-  )
-
-for (run_i in 3:nrow(runs)) {
+run_pipeline <- function(run_i, runs) {
+  
+  on.exit({
+    future::plan(sequential)
+    gc()
+  }, add = TRUE)
   
   cfg <- runs[run_i, ]
-  
-  rm(list = setdiff(ls(), c("runs", "start_ID", "run_i", "cfg")))
-  gc()
   
   source("./src/load_libraries.R")
   source("./src/colors.R")
@@ -46,65 +16,35 @@ for (run_i in 3:nrow(runs)) {
   source("./src/metafit_ens.R")
   source("./src/files_manage.R")
   
-  target                  <- "log_BFA1000"
-  run_ID                  <- cfg$run_ID
-  use_country             <- cfg$use_country
-  use_meteo               <- cfg$use_meteo
-  use_winter              <- cfg$use_winter
-  use_year                <- cfg$use_year
-  metamodel               <- cfg$metamodel
-  cor_thresh              <- cfg$cor_thresh
-  use_perturbation_audit  <- cfg$use_perturbation_audit
-  grid_ini                <- cfg$grid_ini
-  grid_race               <- cfg$grid_race
-  n_ens_reps              <- cfg$n_ens_reps
-  out_path                <- cfg$out_path
+  target                    <- "log_BFA1000"
+  run_ID                    <- cfg$run_ID
+  use_country               <- cfg$use_country
+  use_meteo                 <- cfg$use_meteo
+  use_winter                <- cfg$use_winter
+  use_year                  <- cfg$use_year
+  metamodel                 <- cfg$metamodel
+  cor_thresh                <- cfg$cor_thresh
+  use_perturbation_audit    <- cfg$use_perturbation_audit
+  use_synthetic_audit       <- cfg$use_synthetic_audit
+  use_scenario_audit        <- cfg$use_scenario_audit 
+  scenario_bfai_multiplier  <- cfg$scenario_bfai_multiplier
+  grid_ini                  <- cfg$grid_ini
+  grid_race                 <- cfg$grid_race
+  n_ens_reps                <- cfg$n_ens_reps
+  num_cores_tune            <- cfg$num_cores_tune
+  num_cores_plot            <- cfg$num_cores_plot
+  out_path                  <- cfg$out_path
   
-  # perturbation_audit_settings <- list(
-  #   n_rows_per_country = 5,
-  #   n_steps = 25,
-  #   max_multiplier = 2.0,
-  #   max_log_increase = log(100),
-  #   max_step_jump = log(10),
-  #   min_monotonic_share = 0.50,
-  #   n_keep_stable_models = 8,
-  #   seed = 123
-  # )
+  message("Running ", basename(out_path),
+          " | cor_thresh = ", cor_thresh,
+          " | use_country = ", use_country,
+          " | use_meteo = ", use_meteo)
   
-  # perturbation_audit_settings <- list(
-  #   n_rows_per_country = 5,
-  #   n_steps = 25,
-  #   max_multiplier = 2.0,
-  #   max_log_increase = log(20),
-  #   max_step_jump = log(3),
-  #   min_monotonic_share = 0.80,
-  #   seed = 123
-  # )
-  
-  # 
-  # perturbation_audit_settings <- list(
-  #   n_rows_per_country = 5,
-  #   n_steps = 25,
-  #   max_multiplier = 1.8,
-  #   max_log_increase = log(50),
-  #   max_step_jump = log(4),
-  #   min_monotonic_share = 0.70,
-  #   seed = 123
-  # )
-  
-  # perturbation_audit_settings <- list(
-  #   n_rows_per_country = 5,
-  #   n_steps = 25,
-  #   max_multiplier = 2.0,
-  #   max_log_increase = log(100),
-  #   max_step_jump = log(5),
-  #   min_monotonic_share = 0.60,
-  #   seed = 123
-  # )
+  dir.create(file.path(out_path, "scenarios"), recursive = TRUE, showWarnings = FALSE)
   
   perturbation_audit_settings <- list(
-    use_synthetic_audit = FALSE,
-    use_scenario_audit = TRUE,
+    use_synthetic_audit = use_synthetic_audit,
+    use_scenario_audit = use_scenario_audit,
     n_rows_per_country = 5,
     n_steps = 25,
     max_multiplier = 2.0,
@@ -114,16 +54,9 @@ for (run_i in 3:nrow(runs)) {
     # Maximum allowed exceedance relative to historical high-end BFAI
     # during SSP585 scenario screening.
     scenario_bfai_q = 0.99,
-    scenario_bfai_multiplier = 10,
+    scenario_bfai_multiplier = scenario_bfai_multiplier,
     seed = 123
   )
-  
-  message("Running ", basename(out_path),
-          " | cor_thresh = ", cor_thresh,
-          " | use_country = ", use_country,
-          " | use_meteo = ", use_meteo)
-  
-  dir.create(file.path(out_path, "scenarios"), recursive = TRUE, showWarnings = FALSE)
   
   scenario_settings <- list(
     countries = c("AUT", "BEL", "BGR", "CHE", "CZE", "DEU", "DNK", "ESP", "FIN", "FRA", "GRC", "HRV", "ITA", "LTU", "LVA", "NOR", "POL", "PRT", "ROU", "SVK", "SVN", "SWE"),
@@ -135,10 +68,9 @@ for (run_i in 3:nrow(runs)) {
   verification_years <- seq(1990, 2024)[(seq(1990, 2024) - 1990) %% 3 == 2]  # 3rd year in each 3-year block
   
   # Set up parallel processing (to speed up computations)
-  num_cores <- parallel::detectCores(logical = TRUE) - 1  # Use all but 1 core
   registerDoFuture()
-  plan(multisession, workers = num_cores)
-  
+  future::plan(sequential)
+
   #------------------------------------
   # Load data and handle missing values
   
@@ -261,13 +193,23 @@ for (run_i in 3:nrow(runs)) {
     
     metamodel <- config$metamodel
     
-    use_perturbation_audit  <- config$use_perturbation_audit
+    use_perturbation_audit <- config$use_perturbation_audit
+    
+    use_synthetic_audit <- config$use_synthetic_audit
+    
+    use_scenario_audit <- config$use_scenario_audit
+    
+    scenario_bfai_multiplier <- config$scenario_bfai_multiplier
     
     grid_ini <- config$grid_ini
     
     grid_race <- config$grid_race
     
     n_ens_reps <- config$n_ens_reps
+    
+    num_cores_tune <- config$num_cores_tune
+    
+    num_cores_plot <- config$num_cores_plot
     
     seed <- config$seed
     
@@ -278,8 +220,6 @@ for (run_i in 3:nrow(runs)) {
     
     seed <- 1234
     
-    # Remove highly correlated predictors 
-    # cor_filtered_cols <- corr_filter(data = calibration_data, cutoff = cor_thresh, use_year = use_year)
     # Remove highly correlated predictors 
     cor_filtered_cols <- corr_filter(
       data = calibration_data,
@@ -334,9 +274,14 @@ for (run_i in 3:nrow(runs)) {
       cor_thresh = cor_thresh,
       metamodel = metamodel,
       use_perturbation_audit = use_perturbation_audit,
+      use_synthetic_audit = use_synthetic_audit,
+      use_scenario_audit = use_scenario_audit,
+      scenario_bfai_multiplier = scenario_bfai_multiplier,
       grid_ini = grid_ini,
       grid_race = grid_race,
       n_ens_reps = n_ens_reps,
+      num_cores_tune = num_cores_tune,
+      num_cores_plot = num_cores_plot,
       seed = seed
     )
     
@@ -450,9 +395,14 @@ for (run_i in 3:nrow(runs)) {
   grid_ctrl <-
     control_grid(
       save_pred = TRUE,
-      parallel_over = "everything",
-      save_workflow = TRUE
+      parallel_over = "resamples", # "everything"
+      save_workflow = TRUE,
+      allow_par = TRUE
     )
+  
+  message("Parallel ON for grid tuning")
+  future::plan(multisession, workers = num_cores_tune)
+  gc()
   
   set.seed(seed)
   # Run the grid search
@@ -465,29 +415,38 @@ for (run_i in 3:nrow(runs)) {
       control = grid_ctrl
     )
   
+  message("Parallel OFF after grid tuning")
+  future::plan(sequential)
+  gc()
+  
   # Verify results and notes again
   show_notes(grid_results)
-  grid_results |>  
-    rank_results() |>  
-    filter(.metric == "rmse") |>  
-    select(model, .config, rmse = mean, rank) |> View()
+  # grid_results |>  
+  #   rank_results() |>  
+  #   filter(.metric == "rmse") |>  
+  #   select(model, .config, rmse = mean, rank) |> View()
   
-  autoplot(
-    grid_results,
-    rank_metric = "rmse",  # <- how to order models
-    metric = "rmse",       # <- which metric to visualize
-    select_best = TRUE     # <- one point per workflow
-  ) +
-    geom_text(aes(y = mean - 0.2, label = wflow_id), angle = 90, hjust = 1) +
-    lims(y = c(0.6, 1.4)) +
-    theme(legend.position = "none")
+  # autoplot(
+  #   grid_results,
+  #   rank_metric = "rmse",  # <- how to order models
+  #   metric = "rmse",       # <- which metric to visualize
+  #   select_best = TRUE     # <- one point per workflow
+  # ) +
+  #   geom_text(aes(y = mean - 0.2, label = wflow_id), angle = 90, hjust = 1) +
+  #   lims(y = c(0.6, 1.4)) +
+  #   theme(legend.position = "none")
   
   race_ctrl <-
     control_race(
       save_pred = TRUE,
-      parallel_over = "everything",
-      save_workflow = TRUE
+      parallel_over = "resamples", # "everything"
+      save_workflow = TRUE,
+      allow_par = TRUE
     )
+  
+  message("Parallel ON for racing")
+  future::plan(multisession, workers = num_cores_tune)
+  gc()
   
   set.seed(seed)
   race_results <-
@@ -500,21 +459,25 @@ for (run_i in 3:nrow(runs)) {
       control = race_ctrl
     )
   
-  set.seed(seed)
-  race_results |>  
-    rank_results() |>  
-    filter(.metric == "rmse") |>  
-    select(model, .config, rmse = mean, rank) |> View()
+  message("Parallel OFF after racing")
+  future::plan(sequential)
+  gc()
   
-  autoplot(
-    race_results,
-    rank_metric = "rmse",  # <- how to order models
-    metric = "rmse",       # <- which metric to visualize
-    select_best = TRUE     # <- one point per workflow
-  ) +
-    geom_text(aes(y = mean - 0.2, label = wflow_id), angle = 90, hjust = 1) +
-    lims(y = c(0.6, 1.4)) +
-    theme(legend.position = "none")
+  set.seed(seed)
+  # race_results |>  
+  #   rank_results() |>  
+  #   filter(.metric == "rmse") |>  
+  #   select(model, .config, rmse = mean, rank) |> View()
+  # 
+  # autoplot(
+  #   race_results,
+  #   rank_metric = "rmse",  # <- how to order models
+  #   metric = "rmse",       # <- which metric to visualize
+  #   select_best = TRUE     # <- one point per workflow
+  # ) +
+  #   geom_text(aes(y = mean - 0.2, label = wflow_id), angle = 90, hjust = 1) +
+  #   lims(y = c(0.6, 1.4)) +
+  #   theme(legend.position = "none")
   
   set.seed(seed)
   matched_results <- 
@@ -528,15 +491,15 @@ for (run_i in 3:nrow(runs)) {
     ) |>   
     filter(.metric == "rmse")
   
-  matched_results
-  
-  matched_results |>  
-    ggplot(aes(x = complete, y = race)) + 
-    geom_abline(lty = 3) + 
-    geom_point() + 
-    geom_text_repel(aes(label = model)) +
-    coord_obs_pred() + 
-    labs(x = "Complete Grid RMSE", y = "Racing RMSE") 
+  # matched_results
+  # 
+  # matched_results |>  
+  #   ggplot(aes(x = complete, y = race)) + 
+  #   geom_abline(lty = 3) + 
+  #   geom_point() + 
+  #   geom_text_repel(aes(label = model)) +
+  #   coord_obs_pred() + 
+  #   labs(x = "Complete Grid RMSE", y = "Racing RMSE") 
   
   # Create a list to store predictions for all 12 models
   all_model_predictions <- list()
@@ -577,15 +540,15 @@ for (run_i in 3:nrow(runs)) {
     relocate(Country, .before = everything())  # Move 'Country' to the first column
   
   # Create a ggplot2 plot with facet wrapping for all models
-  ggplot(all_model_predictions_df, aes(x = log_BFA1000, y = .pred, color = dataset)) +
-    geom_point(alpha = 0.6) +
-    geom_abline(slope = 1, intercept = 0, color = "gray50", lty = 2) +  # Ideal line
-    facet_wrap(~model, ncol = 4, nrow = 3) +  # Facet wrap for all models (4x3 grid)
-    labs(title = "Predicted vs Observed Values for 12 Models",
-         x = "Observed log_BFA1000",
-         y = "Predicted log_BFA1000") +
-    theme_bw() +
-    scale_color_manual(values = c("calibration" = "blue", "verification" = "red"))
+  # ggplot(all_model_predictions_df, aes(x = log_BFA1000, y = .pred, color = dataset)) +
+  #   geom_point(alpha = 0.6) +
+  #   geom_abline(slope = 1, intercept = 0, color = "gray50", lty = 2) +  # Ideal line
+  #   facet_wrap(~model, ncol = 4, nrow = 3) +  # Facet wrap for all models (4x3 grid)
+  #   labs(title = "Predicted vs Observed Values for 12 Models",
+  #        x = "Observed log_BFA1000",
+  #        y = "Predicted log_BFA1000") +
+  #   theme_bw() +
+  #   scale_color_manual(values = c("calibration" = "blue", "verification" = "red"))
   
   # --------------
   # Ensemble mean
@@ -637,8 +600,8 @@ for (run_i in 3:nrow(runs)) {
       #   seed = seed
       # )
       
-      n_stack_candidates <- perturbation_audit_output$race_results_for_stack |>
-        stacks::stacks() # dummy-safe placeholder; do not use
+      # n_stack_candidates <- perturbation_audit_output$race_results_for_stack |>
+      #   stacks::stacks() # dummy-safe placeholder; do not use
       
       n_passed_candidates <- perturbation_audit_output$robustness_table |>
         dplyr::filter(status == "pass") |>
@@ -710,12 +673,12 @@ for (run_i in 3:nrow(runs)) {
     # Display RMSE results sorted
     print(rmse_results)
     
-    View(rmse_results)
+    # View(rmse_results)
     
     set.seed(seed+1)
     ens <- blend_predictions(models_stack)
     
-    autoplot(ens)
+    # autoplot(ens)
     
     set.seed(seed+2)
     ens <- blend_predictions(models_stack, penalty = 10^seq(-2, -0.5, length = 20))
@@ -758,7 +721,7 @@ for (run_i in 3:nrow(runs)) {
     
     #---------------------------------------------------------------------------
     
-    autoplot(ens)
+    # autoplot(ens)
     
     stack_rank <- autoplot(ens, "weights") +
       geom_text(aes(x = weight + 0.01, label = model), hjust = 0) +
@@ -795,7 +758,7 @@ for (run_i in 3:nrow(runs)) {
         x = "Stacking Coefficient",
         y = "Member"
       ) +
-      coord_cartesian(xlim = c(0, max(weights_labeled$weight, na.rm = TRUE) * 1.5))
+      coord_cartesian(xlim = c(0, max(weights_labeled$weight, na.rm = TRUE) * 2.5))
     
     # Save the plot
     if(use_country == TRUE){
@@ -858,18 +821,18 @@ for (run_i in 3:nrow(runs)) {
                                max(ens_model_pred_df$.pred) - 0.5))
   
   # Create the ggplot with RMSE and R-squared annotations
-  ggplot(ens_model_pred_df, aes(x = log_BFA1000, y = .pred, color = dataset)) +
-    geom_point(alpha = 0.6) +
-    geom_abline(slope = 1, intercept = 0, color = "gray50", lty = 2) +  # Ideal line
-    labs(title = "Predicted vs Observed Values - Model Ensemble Mean",
-         x = "Observed log_BFA1000",
-         y = "Predicted log_BFA1000") +
-    theme_bw() +
-    scale_color_manual(values = c("calibration" = "blue", "verification" = "red")) +
-    geom_text(data = metrics_values, aes(x = min(ens_model_pred_df$log_BFA1000), 
-                                         y = y_position,
-                                         label = metric_label),
-              hjust = 0, color = "black", size = 4, parse = TRUE)
+  # ggplot(ens_model_pred_df, aes(x = log_BFA1000, y = .pred, color = dataset)) +
+  #   geom_point(alpha = 0.6) +
+  #   geom_abline(slope = 1, intercept = 0, color = "gray50", lty = 2) +  # Ideal line
+  #   labs(title = "Predicted vs Observed Values - Model Ensemble Mean",
+  #        x = "Observed log_BFA1000",
+  #        y = "Predicted log_BFA1000") +
+  #   theme_bw() +
+  #   scale_color_manual(values = c("calibration" = "blue", "verification" = "red")) +
+  #   geom_text(data = metrics_values, aes(x = min(ens_model_pred_df$log_BFA1000), 
+  #                                        y = y_position,
+  #                                        label = metric_label),
+  #             hjust = 0, color = "black", size = 4, parse = TRUE)
   
   # Prepare RMSE values with multiline text using ggtext styling
   rmse_values_combined <- metrics_values |> 
@@ -1182,7 +1145,7 @@ for (run_i in 3:nrow(runs)) {
       panel.border = element_blank()     # Remove the black border around the plot
     )
   
-  print(final_p)
+  # print(final_p)
   
   # Save the plot
   if(use_country == TRUE){
@@ -1194,15 +1157,43 @@ for (run_i in 3:nrow(runs)) {
   
   #-------------------------------------------------------------------------------
   # Climate scenario
-  make_country_scenario_plots <- function(country_code, ssp_use) {
+  
+  #------------------------
+  # Fitting scenario models
+  message("Fitting scenario models")
+  
+  scenario_models <- list()
+  
+  for (i in seq_len(nrow(matched_results_for_scenarios))) {
+  
+    model_id <- matched_results_for_scenarios$wflow_id[i]
     
-    clean_data |> 
-      filter(Year %in% 1991:2024, Country == country_code) |> 
-      pull(log_BFA1000) |> 
-      mean() |> 
-      exp()
+    message("Fitting scenario model: ", model_id)
     
-    # Load data
+    best_results <- race_results_for_stack |>
+      extract_workflow_set_result(model_id) |>
+      select_best(metric = "rmse")
+    
+    scenario_models[[model_id]] <- race_results_for_stack |>
+      extract_workflow(model_id) |>
+      finalize_workflow(best_results) |>
+      fit(data = calibration_data)
+    
+    rm(best_results)
+    gc()
+  }
+  
+  #--------------------------------------
+  # Precomputing all scenario predictions
+  message("Precomputing all scenario predictions")
+  
+  all_scenario_predictions <- list()
+  all_ensemble_predictions <- list()
+  
+  for (country_code in scenario_settings$countries) {
+    
+    message("Precomputing scenario predictions for: ", country_code)
+    
     scenario_root <- "./inputs"
     
     scenario_country_files <- list.files(
@@ -1234,7 +1225,6 @@ for (run_i in 3:nrow(runs)) {
             varname = paste(Variable, Season, sep = "_")
           ) |>
           select(Country, Scenario, GCM, Period, Year, Dataset, varname, value)
-        
       }) |>
       pivot_wider(
         names_from = varname,
@@ -1242,7 +1232,6 @@ for (run_i in 3:nrow(runs)) {
       ) |>
       arrange(Scenario, GCM, Period, Year)
     
-    # Add static predictors needed by model
     country_summary <- clean_data |>
       filter(Country == country_code) |>
       summarise(
@@ -1251,473 +1240,75 @@ for (run_i in 3:nrow(runs)) {
         Broadleaved = mean(Broadleaved, na.rm = TRUE)
       )
     
-    bfa_reference <- clean_data |>
-      filter(
-        Country == country_code,
-        Year %in% 1991:2024
-      ) |>
-      summarise(
-        BFA1000_1991_2024 = exp(mean(log_BFA1000, na.rm = TRUE))
-      ) |>
-      pull(BFA1000_1991_2024)
-    
     scenario_country_model <- scenario_country |>
       mutate(
         Country = country_code,
         Pines = country_summary$Pines,
         Conifers = country_summary$Conifers,
         Broadleaved = country_summary$Broadleaved
-      )
-    
-    scenario_country_model <- scenario_country_model |>
+      ) |>
       rename_with(
         \(x) x |>
           str_replace_all("\\+", "_plus") |>
           str_replace_all("-", "_")
       )
     
-    final_prediction_annual <- NULL
-    
-    
-    for (i in seq_len(nrow(matched_results_for_scenarios))) {
+    for (model_id in names(scenario_models)) {
       
-      model_id <- matched_results_for_scenarios$wflow_id[i]
-
-      set.seed(seed)
-      
-      best_results <- race_results |>
-        extract_workflow_set_result(model_id) |>
-        select_best(metric = "rmse")
-      
-      set.seed(seed)
-      
-      final_model <- race_results |>
-        extract_workflow(model_id) |>
-        finalize_workflow(best_results) |>
-        fit(data = calibration_data)
-      
-      tmp <- predict(final_model, new_data = scenario_country_model) |>
+      tmp <- stats::predict(
+        scenario_models[[model_id]],
+        new_data = scenario_country_model
+      ) |>
         bind_cols(scenario_country_model) |>
         mutate(
           ML_model = model_id,
           predicted_BFA1000 = exp(.pred)
         )
       
-      final_prediction_annual <- bind_rows(final_prediction_annual, tmp)
+      all_scenario_predictions[[paste(country_code, model_id, sep = "_")]] <- tmp
     }
     
-    final_prediction <- final_prediction_annual |>
-      filter(Scenario == ssp_use) |>
-      group_by(Scenario, GCM, Period, ML_model) |>
-      summarise(
-        predicted_BFA1000 = mean(predicted_BFA1000, na.rm = TRUE),
-        .groups = "drop"
-      ) |>
-      mutate(
-        Period = as.character(Period),
-        BFA1000_1991_2024 = bfa_reference
-      ) |>
-      rename(
-        Climate_model = GCM
-      ) |>
-      mutate(
-        Climate_model = factor(
-          Climate_model,
-          levels = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
-                     "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1")
-        ),
-        Period_num = case_when(
-          Period == "2030" ~ 2030,
-          Period == "2050" ~ 2050,
-          Period == "2070" ~ 2070,
-          Period == "2085" ~ 2085,
-          TRUE ~ NA_real_
-        )
-      )
-    
-    baseline_prediction <- calibration_data |>
-      filter(Country == country_code) |>
-      mutate(
-        Period = case_when(
-          # Year %in% 1961:1990 ~ "1961-1990",
-          Year %in% 1981:2010 ~ "1981-2010",
-          # Year %in% 1991:2020 ~ "1991-2020",
-          TRUE ~ NA_character_
-        )
-      ) |>
-      filter(!is.na(Period)) |>
-      group_by(Period) |>
-      summarise(
-        predicted_BFA1000 = exp(mean(log_BFA1000, na.rm = TRUE)),
-        BFA1000_1991_2024 = bfa_reference,
-        .groups = "drop"
-      ) |>
-      crossing(
-        ML_model = final_prediction |>
-          distinct(ML_model) |>
-          pull(ML_model)
-      ) |>
-      mutate(
-        Climate_model = "Baseline"
-      ) |>
-      select(predicted_BFA1000, Period, Climate_model, ML_model, BFA1000_1991_2024)
-    
-    baseline_prediction |>
-      count(ML_model, Period)
-    
-    
-    final_prediction <- final_prediction |>
-      select(predicted_BFA1000, Period, Climate_model, ML_model, BFA1000_1991_2024) |>
-      bind_rows(baseline_prediction) |>
-      mutate(
-        Climate_model = factor(
-          Climate_model,
-          levels = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
-                     "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1")
-        ),
-        Period_num = case_when(
-          # Period == "1961-1990" ~ 1976,
-          Period == "1981-2010" ~ 1996,
-          # Period == "1991-2020" ~ 2006,
-          Period == "2030"      ~ 2030,
-          Period == "2050"      ~ 2050,
-          Period == "2070"      ~ 2070,
-          Period == "2085"      ~ 2085,
-          TRUE ~ NA_real_
-        )
-      )
-    
-    # Compute per-ML-model smoothed lines
-    trend_data <- final_prediction |>
-      mutate(period_type = if_else(Period %in% c("1981-2010"), "baseline", "future")) |>
-      group_by(ML_model, period_type, Period_num) |>
-      summarise(predicted_BFA1000 = if_else(
-        period_type == "future",
-        mean(predicted_BFA1000, na.rm = TRUE),
-        predicted_BFA1000[1]  # use actual point from baseline
-      ), .groups = "drop") |>
-      group_by(ML_model) |>
-      arrange(Period_num) |>
-      group_modify(~{
-        
-        tmp <- .x |>
-          filter(is.finite(predicted_BFA1000), is.finite(Period_num))
-        
-        if (nrow(tmp) < 4 || n_distinct(tmp$Period_num) < 4) {
-          return(tibble())
-        }
-        
-        smoothed <- tibble(
-          Period_num = seq(min(tmp$Period_num), max(tmp$Period_num), length.out = 100)
-        )
-        
-        fit <- loess(predicted_BFA1000 ~ Period_num, data = tmp, span = 0.8)
-        
-        smoothed |>
-          mutate(
-            predicted_BFA1000 = predict(fit, newdata = smoothed),
-            ML_model = unique(tmp$ML_model)
-          ) |>
-          filter(is.finite(predicted_BFA1000))
-      }) |>
-      ungroup()
-    
-    # x_labels <- c(1970, 1990, 2010, 2030, 2050, 2070, 2090)
-    x_labels <- c(1990, 2010, 2030, 2050, 2070, 2090)
-    
-    scenario_p <- ggplot(final_prediction, aes(x = Period_num, y = predicted_BFA1000, color = Climate_model)) +
-      
-      # Add ML-model specific smoothed lines
-      geom_line(
-        data = trend_data,
-        aes(x = Period_num, y = predicted_BFA1000, group = ML_model, linetype = "Ensemble trend"),
-        inherit.aes = FALSE,
-        color = "#2b2b2b", size = 1.2, alpha = 0.3
-      ) +
-      
-      # Reference line
-      geom_hline(
-        aes(yintercept = BFA1000_1991_2024, linetype = "Observed (1991–2024)"),
-        data = final_prediction |> filter(Period == "1981-2010"),
-        color = "#2b2b2b", size = 0.8
-      ) +
-      
-      # ML model predictions
-      geom_point(size = 3, alpha = 0.8) +
-      
-      # Facet by ML model
-      facet_wrap(~ ML_model) +
-      
-      # X-axis as real timeline
-      scale_x_continuous(
-        breaks = x_labels,
-        labels = x_labels,
-        limits = c(1988, 2092)
-      ) +
-      
-      # Color legend for Climate Models
-      scale_color_manual(
-        values = custom_colors_GCM,
-        breaks = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
-                   "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1"),
-        name = "Climate data",
-        drop = FALSE,
-        guide = guide_legend(order = 1)
-      ) +
-      
-      # Linetype legend
-      scale_linetype_manual(
-        values = c("Observed (1991–2024)" = "dashed", "Ensemble trend" = "solid"),
-        # values = c("Ensemble trend" = "solid"),
-        name = NULL,
-        guide = guide_legend(
-          override.aes = list(
-            color = "#2b2b2b",
-            size = c(0.8, 1.2),
-            alpha = c(0.3, 1)
-            # size = c(0.8),
-            # alpha = c(0.3)
-          ),
-          order = 2,
-          keywidth = 1.8
-        )
-      ) +
-      
-      # Labels and theme
-      labs(
-        title = "Predicted BFAI Across Climate Models and Machine Learning Models",
-        x = "Year",
-        y = "Predicted BFAI"
-      ) +
-      theme_bw() +
-      theme(
-        legend.position = "right",
-        legend.text = element_text(size = 9),
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        axis.title.x = element_text(margin = margin(t = 15)),
-        strip.text = element_text(face = "bold")
-      ) #+
-    #coord_cartesian(ylim = c(0.05, 0.35))
-    
-    plot_name <- if (use_country == TRUE) {
-      paste0(out_path, "/scenarios/scenarios_", country_code, "_", ssp_use, "_all_models_predictions_for_scenarios_country.png")
-    } else {
-      paste0(out_path, "/scenarios/scenarios_", country_code, "_", ssp_use, "_all_models_predictions_for_scenarios.png")
-    }
-    ggsave(plot_name, plot = scenario_p, width = 3 * 140, height = 2 * 120, dpi = 600, units = 'mm')
-    
-    #-------------------------------------------------------------------------------
-    
-    # Ensemble scenario prediction on annual data
-    ens_scen_annual <- predict(ens, new_data = scenario_country_model) |>
+    tmp_ens <- stats::predict(
+      ens,
+      new_data = scenario_country_model
+    ) |>
       bind_cols(scenario_country_model) |>
       mutate(
         ML_model = "ensemble mean",
         predicted_BFA1000 = exp(.pred)
       )
     
-    ens_scen <- ens_scen_annual |>
-      filter(Scenario == ssp_use) |>
-      group_by(GCM, Period, ML_model) |>
-      summarise(
-        predicted_BFA1000 = mean(predicted_BFA1000, na.rm = TRUE),
-        .groups = "drop"
-      ) |>
-      mutate(
-        Period = as.character(Period),
-        BFA1000_1991_2024 = bfa_reference
-      ) |>
-      rename(
-        Climate_model = GCM
-      )
-    
-    baseline_ens <- clean_data |>
-      filter(Country == country_code) |>
-      mutate(
-        Period = case_when(
-          # Year %in% 1961:1990 ~ "1961-1990",
-          Year %in% 1981:2010 ~ "1981-2010",
-          # Year %in% 1990:2024 ~ "1990-2024",
-          TRUE ~ NA_character_
-        )
-      ) |>
-      filter(!is.na(Period)) |>
-      group_by(Period) |>
-      summarise(
-        predicted_BFA1000 = exp(mean(log_BFA1000, na.rm = TRUE)),
-        BFA1000_1991_2024 = bfa_reference,
-        .groups = "drop"
-      ) |>
-      mutate(
-        Climate_model = "Baseline",
-        ML_model = "ensemble mean"
-      )
-    
-    ens_scen <- ens_scen |>
-      bind_rows(baseline_ens) |>
-      mutate(
-        Climate_model = factor(
-          Climate_model,
-          levels = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
-                     "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1")
-        ),
-        Period_num = case_when(
-          # Period == "1961-1990" ~ 1976,
-          Period == "1981-2010" ~ 1996,
-          # Period == "1990-2024" ~ 2007,
-          Period == "2030"      ~ 2030,
-          Period == "2050"      ~ 2050,
-          Period == "2070"      ~ 2070,
-          Period == "2085"      ~ 2085,
-          TRUE ~ NA_real_
-        )
-      )
-    
-    mean_scenarios <- ens_scen |>
-      filter(Period %in% c("2030", "2050", "2070", "2085")) |>
-      group_by(Period, Period_num) |>
-      summarise(
-        predicted_BFA1000 = mean(predicted_BFA1000, na.rm = TRUE),
-        .groups = "drop"
-      )
-    
-    baseline_means <- ens_scen |>
-      # filter(Period %in% c("1961-1990", "1981-2010", "1991-2020")) |>
-      filter(Period %in% c("1981-2010")) |>
-      select(Period, Period_num, predicted_BFA1000) |>
-      distinct()
-    
-    line_data <- bind_rows(baseline_means, mean_scenarios)
-    
-    # Define numeric positions for each period
-    period_map <- c(
-      # "1961-1990" = 1976,
-      "1981-2010" = 1996,
-      # "1991-2024" = 2007,
-      "2030"      = 2030,
-      "2050"      = 2050,
-      "2070"      = 2070,
-      "2085"      = 2085
-    )
-    
-    # Fit loess model for smoothed line
-    line_data <- line_data |>
-      dplyr::filter(
-        is.finite(predicted_BFA1000),
-        is.finite(Period_num)
-      )
-    loess_fit <- loess(predicted_BFA1000 ~ Period_num, data = line_data)
-    smoothed_data <- data.frame(
-      Period_num = seq(min(line_data$Period_num), max(line_data$Period_num), length.out = 100)
-    )
-    smoothed_data$predicted_BFA1000 <- predict(loess_fit, newdata = smoothed_data)
-    
-    # Define desired tick marks and labels for x-axis
-    x_labels <- c(1990, 2010, 2030, 2050, 2070, 2090)
-    
-    # Create plot
-    scenario_p <- ggplot(ens_scen, aes(x = Period_num, y = predicted_BFA1000, color = Climate_model)) +
-      
-      # Ensemble trend line
-      geom_line(
-        data = smoothed_data,
-        aes(x = Period_num, y = predicted_BFA1000, linetype = "Ensemble trend"),
-        color = "#2b2b2b", size = 1.2, alpha = 0.3,
-        inherit.aes = FALSE
-      ) +
-      
-      # Reference line
-      geom_hline(
-        aes(yintercept = BFA1000_1991_2024, linetype = "Observed (1991–2024)"),
-        data = ens_scen |> filter(Period == "1981-2010"),
-        color = "#2b2b2b",
-        size = 0.8
-      ) +
-      
-      # Model points on top
-      geom_point(size = 3, alpha = 0.8) +
-      
-      # X axis scale
-      scale_x_continuous(
-        breaks = x_labels,
-        labels = x_labels,
-        limits = c(1988, 2092)
-      ) +
-      
-      # Color legend for models
-      scale_color_manual(
-        values = custom_colors_GCM,
-        breaks = c("Baseline", "cmcc-esm2", "ec-earth3", "gfdl-esm4",
-                   "mpi-esm1-2-hr", "mri-esm2-0", "taiesm1"),
-        name = "Climate data",
-        guide = guide_legend(order = 1)
-      ) +
-      
-      # Linetype legend for both lines
-      scale_linetype_manual(
-        values = c("Observed (1991–2024)" = "dashed", "Ensemble trend" = "solid"),
-        # values = c("Ensemble trend" = "solid"),
-        name = NULL,
-        guide = guide_legend(
-          override.aes = list(
-            color = "#2b2b2b",
-            size = c(0.8, 1.2),
-            alpha = c(0.3, 1)
-            # size = c(0.8),
-            # alpha = c(0.3)
-          ),
-          order = 2,
-          keywidth = 1.8
-        )
-      ) +
-      
-      # Labels and theme
-      labs(
-        title = "Ensemble mean model of BFAI",
-        x = "Year",
-        y = "Predicted BFAI"
-      ) +
-      
-      theme_bw() +
-      theme(
-        legend.position = "right",
-        legend.text = element_text(size = 9),
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        axis.title.x = element_text(margin = margin(t = 15)),
-        strip.text = element_text(face = "bold")
-      )
-    
-    # Save the plot
-    if (use_country == TRUE) {
-      plot_name <- paste0(out_path, "/scenarios/scenarios_", country_code, "_", ssp_use, "_all_models_predictions_for_scenarios_ensemble_mean_country.png")
-    } else {
-      plot_name <- paste0(out_path, "/scenarios/scenarios_", country_code, "_", ssp_use, "_all_models_predictions_for_scenarios_ensemble_mean.png")
-    }
-    ggsave(plot_name, plot = scenario_p, width = 140, height = 100, dpi = 600, units = 'mm')
+    all_ensemble_predictions[[country_code]] <- tmp_ens
   }
   
-  # countries <- calibration_data |>
-  #   distinct(Country) |>
-  #   pull(Country)
-  # 
-  # ssps <- c("ssp126", "ssp245", "ssp370", "ssp585")
-  # 
-  # # To speed up
-  # # ssps <-"ssp245"
-  # countries <- c("CZE", "ESP", "GRC", "ITA", "PRT", "ROU", "SWE")
-  # # countries <- c("AUT", "BGR", "CZE", "ESP", "FRA", "GRC", "ITA", "PRT", "ROU", "SWE")
-  # 
-  # for (country_code in countries) {
-  #   for (ssp_use in ssps) {
-  #     make_country_scenario_plots(country_code, ssp_use)
-  #   }
-  # }
+  all_scenario_predictions_df <- bind_rows(all_scenario_predictions)
+  all_ensemble_predictions_df <- bind_rows(all_ensemble_predictions)
   
-  purrr::walk(scenario_settings$countries, \(country_code) {
-    purrr::walk(scenario_settings$ssps, \(ssp_use) {
-      make_country_scenario_plots(country_code, ssp_use)
-    })
-  })
+  plot_data_path <- file.path(out_path, "plot_data")
+  dir.create(plot_data_path, recursive = TRUE, showWarnings = FALSE)
+  
+  for (country_code in scenario_settings$countries) {
+    saveRDS(
+      all_scenario_predictions_df |> filter(Country == country_code),
+      file.path(plot_data_path, paste0(country_code, "_scenario_predictions.rds"))
+    )
+    
+    saveRDS(
+      all_ensemble_predictions_df |> filter(Country == country_code),
+      file.path(plot_data_path, paste0(country_code, "_ensemble_predictions.rds"))
+    )
+  }
+  
+  saveRDS(all_scenario_predictions_df, file.path(out_path, "all_scenario_predictions_df.rds"))
+  saveRDS(all_ensemble_predictions_df, file.path(out_path, "all_ensemble_predictions_df.rds"))
+  saveRDS(clean_data, file.path(out_path, "clean_data_for_plots.rds"))
+  saveRDS(calibration_data, file.path(out_path, "calibration_data_for_plots.rds"))
+  saveRDS(scenario_settings, file.path(out_path, "scenario_settings.rds"))
+  saveRDS(use_country, file.path(out_path, "use_country.rds"))
+  saveRDS(num_cores_plot, file.path(out_path, "num_cores_plot.rds"))
+  
+  rm(all_scenario_predictions, all_ensemble_predictions, scenario_models)
+  gc()
   
   #-----------------------------------------------------------------------------
   # --- RMSE ---
@@ -1773,5 +1364,25 @@ for (run_i in 3:nrow(runs)) {
   
   # Save the final ensemble model (either blended or meta-model-based)
   saveRDS(ens, file = paste0(out_path, "/ensemble_model.rds"))
+  
+  # Remove the objects to free environment before furrr parallel plotting
+  rm(list = intersect(
+    c(
+      "ens", "models_stack", "race_results", "grid_results",
+      "matched_results", "race_results_for_stack", "scenario_models",
+      "rmse_individual", "rmse_ensemble", "rmse_all",
+      "rsq_individual", "rsq_ensemble", "rsq_all", "error_stat"
+    ),
+    ls()
+  ))
+  gc()
+  
+  #------------------
+  # Parallel plotting
+  callr::rscript(
+    script = "plot_scenarios_worker.R",
+    cmdargs = out_path,
+    show = TRUE
+  )
+  
 }
-

@@ -5,6 +5,13 @@
 library(tidyverse)
 library(callr)
 
+Sys.setenv(CLI_NUM_COLORS = 1)
+options(
+  crayon.enabled = FALSE,
+  cli.num_colors = 1,
+  cli.dynamic = FALSE
+)
+
 start_ID <- 1
 
 runs <- tidyr::crossing(
@@ -21,8 +28,8 @@ runs <- tidyr::crossing(
   grid_ini = c(50), # 50
   grid_race = c(100), # 100
   n_ens_reps = c(20), # 20
-  num_cores_tune = 12,
-  num_cores_plot = 12
+  num_cores_tune = 14,
+  num_cores_plot = 18
 ) |>
   mutate(
     run_ID = start_ID - 1 + row_number(),
@@ -42,7 +49,7 @@ saveRDS(runs, "runs.rds")
 # Launch each run in a fresh R session
 ################################################################################
 
-for (run_i in 5:nrow(runs)) {
+for (run_i in 1:nrow(runs)) {
   
   message(
     "\n=====================================================\n",
@@ -52,10 +59,18 @@ for (run_i in 5:nrow(runs)) {
   
   result <- tryCatch({
     
+    dir.create(runs$out_path[run_i], recursive = TRUE, showWarnings = FALSE)
+    
+    log_file <- file.path(
+      runs$out_path[run_i],
+      "pipeline_log.txt"
+    )
+    
     callr::rscript(
       script = "pipeline_worker.R",
       cmdargs = as.character(run_i),
-      show = TRUE
+      stdout = log_file,
+      stderr = log_file
     )
     
     TRUE

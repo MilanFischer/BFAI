@@ -16,6 +16,14 @@ run_pipeline <- function(run_i, runs) {
   source("./src/metafit_ens.R")
   source("./src/files_manage.R")
   
+  
+  log_message <- function(...) {
+    log_message(
+      format(Sys.time(), "[%Y-%m-%d %H:%M:%S] "),
+      paste0(...)
+    )
+  }
+  
   target                    <- "log_BFA1000"
   run_ID                    <- cfg$run_ID
   use_country               <- cfg$use_country
@@ -35,7 +43,7 @@ run_pipeline <- function(run_i, runs) {
   num_cores_plot            <- cfg$num_cores_plot
   out_path                  <- cfg$out_path
   
-  message("Running ", basename(out_path),
+  log_message("Running ", basename(out_path),
           " | cor_thresh = ", cor_thresh,
           " | use_country = ", use_country,
           " | use_meteo = ", use_meteo)
@@ -213,14 +221,15 @@ run_pipeline <- function(run_i, runs) {
     
     seed <- config$seed
     
-    message("Loaded config from: ", config_path)
+    log_message("Loaded config from: ", config_path)
   } else {
     
-    message("No config.yml found. Generating new config.")
+    log_message("No config.yml found. Generating new config.")
     
     seed <- 1234
     
-    # Remove highly correlated predictors 
+    # Remove highly correlated predictors
+    log_message("Starting correlation filter")
     cor_filtered_cols <- corr_filter(
       data = calibration_data,
       target = target,
@@ -228,12 +237,14 @@ run_pipeline <- function(run_i, runs) {
       use_year = use_year
     )
     
+    log_message("Starting Boruta")
     boruta_filtered_cols <- get_boruta_predictors(calibration_data |> select(all_of(cor_filtered_cols)),
                                                   target = target, use_country = use_country, use_year = use_year, min_freq = 5, v = 10, seed = seed)
     
     predictors_only <- setdiff(boruta_filtered_cols, c(target, if (!use_year) "Year"))
     
     # RFE with correct predictors
+    log_message("Starting RFE")
     ctrl <- rfeControl(functions = rfFuncs, method = "cv", number = 10)
     rfe_result <- rfe(calibration_data[, predictors_only], calibration_data[[target]],
                       sizes = length(predictors_only), rfeControl = ctrl)
@@ -264,6 +275,7 @@ run_pipeline <- function(run_i, runs) {
     predictors <- setdiff(final_cols, target)
     
     # Save predictors and seed to config.yml
+    log_message("Saving config")
     config <- list(
       predictors = predictors,
       use_country = use_country,
@@ -286,7 +298,7 @@ run_pipeline <- function(run_i, runs) {
     )
     
     write_yaml(config, config_path)
-    message("Saved new config to: ", config_path)
+    log_message("Saved new config to: ", config_path)
   }
   
   needed_cols <- unique(c("Country", "Year", target, predictors))
@@ -400,7 +412,7 @@ run_pipeline <- function(run_i, runs) {
       allow_par = TRUE
     )
   
-  message("Parallel ON for grid tuning")
+  log_message("Parallel ON for grid tuning")
   future::plan(multisession, workers = num_cores_tune)
   gc()
   
@@ -415,7 +427,7 @@ run_pipeline <- function(run_i, runs) {
       control = grid_ctrl
     )
   
-  message("Parallel OFF after grid tuning")
+  log_message("Parallel OFF after grid tuning")
   future::plan(sequential)
   gc()
   
@@ -444,7 +456,7 @@ run_pipeline <- function(run_i, runs) {
       allow_par = TRUE
     )
   
-  message("Parallel ON for racing")
+  log_message("Parallel ON for racing")
   future::plan(multisession, workers = num_cores_tune)
   gc()
   
@@ -459,7 +471,7 @@ run_pipeline <- function(run_i, runs) {
       control = race_ctrl
     )
   
-  message("Parallel OFF after racing")
+  log_message("Parallel OFF after racing")
   future::plan(sequential)
   gc()
   
@@ -611,7 +623,7 @@ run_pipeline <- function(run_i, runs) {
       # This avoids blend_predictions() failing with only one candidate.
       if (n_passed_candidates < 3) {
         
-        message(
+        log_message(
           "Only ", n_passed_candidates,
           " candidate(s) passed the perturbation audit. ",
           "Repeating audit with relaxed settings."
@@ -716,7 +728,7 @@ run_pipeline <- function(run_i, runs) {
     # Select the best ensemble (lowest RMSE on calibration set)
     best_index <- which.min(rmse_scores)
     ens <- all_ens_models[[best_index]]
-    message("Selected ensemble model from seed index ", best_index,
+    log_message("Selected ensemble model from seed index ", best_index,
             " with RMSE: ", round(rmse_scores[best_index], 4))
     
     #---------------------------------------------------------------------------
@@ -1160,7 +1172,7 @@ run_pipeline <- function(run_i, runs) {
   
   #------------------------
   # Fitting scenario models
-  message("Fitting scenario models")
+  log_message("Fitting scenario models")
   
   scenario_models <- list()
   
@@ -1168,7 +1180,7 @@ run_pipeline <- function(run_i, runs) {
   
     model_id <- matched_results_for_scenarios$wflow_id[i]
     
-    message("Fitting scenario model: ", model_id)
+    log_message("Fitting scenario model: ", model_id)
     
     best_results <- race_results_for_stack |>
       extract_workflow_set_result(model_id) |>
@@ -1185,14 +1197,14 @@ run_pipeline <- function(run_i, runs) {
   
   #--------------------------------------
   # Precomputing all scenario predictions
-  message("Precomputing all scenario predictions")
+  log_message("Precomputing all scenario predictions")
   
   all_scenario_predictions <- list()
   all_ensemble_predictions <- list()
   
   for (country_code in scenario_settings$countries) {
     
-    message("Precomputing scenario predictions for: ", country_code)
+    log_message("Precomputing scenario predictions for: ", country_code)
     
     scenario_root <- "./inputs"
     

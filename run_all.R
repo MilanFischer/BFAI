@@ -12,11 +12,11 @@ options(
   cli.dynamic = FALSE
 )
 
-start_ID <- 1
+start_ID <- 7
 
 runs <- tidyr::crossing(
   cor_thresh = seq(0.7, 0.95, 0.05),
-  use_country = c(TRUE),
+  use_country = c(FALSE),
   use_meteo = c(FALSE),
   use_winter = c(TRUE),
   use_year = c(FALSE),

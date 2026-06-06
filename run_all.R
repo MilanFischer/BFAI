@@ -12,12 +12,12 @@ options(
   cli.dynamic = FALSE
 )
 
-start_ID <- 7
+start_ID <- 13
 
 runs <- tidyr::crossing(
   cor_thresh = seq(0.7, 0.95, 0.05),
-  use_country = c(FALSE),
-  use_meteo = c(FALSE),
+  use_country = c(TRUE),
+  use_meteo = c(TRUE),
   use_winter = c(TRUE),
   use_year = c(FALSE),
   metamodel = c(FALSE),
@@ -49,7 +49,7 @@ saveRDS(runs, "runs.rds")
 # Launch each run in a fresh R session
 ################################################################################
 
-for (run_i in 1:nrow(runs)) {
+for (run_i in 1) {
   
   message(
     "\n=====================================================\n",

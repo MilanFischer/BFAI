@@ -11,8 +11,8 @@ ssp_use <- "ssp245"
 countries_use <- c(
   SWE = "Sweden",
   CZE = "Czech Republic",
-  # ITA = "Italy"
-  HRV = "Croatia"
+  ITA = "Italy"
+  # HRV = "Croatia"
 )
 
 clean_data <- readRDS(file.path(out_path, "clean_data_for_plots.rds"))
@@ -20,9 +20,9 @@ clean_data <- readRDS(file.path(out_path, "clean_data_for_plots.rds"))
 make_country_panel_data <- function(country_code) {
   
   bfa_reference <- clean_data |>
-    filter(Country == country_code, Year %in% 1991:2024) |>
-    summarise(BFA1000_1991_2024 = exp(mean(log_BFA1000, na.rm = TRUE))) |>
-    pull(BFA1000_1991_2024)
+    filter(Country == country_code, Year %in% 1990:2024) |>
+    summarise(BFA1000_1990_2024 = exp(mean(log_BFA1000, na.rm = TRUE))) |>
+    pull(BFA1000_1990_2024)
   
   ens_scen_annual <- readRDS(
     file.path(out_path, "plot_data", paste0(country_code, "_ensemble_predictions.rds"))
@@ -37,7 +37,7 @@ make_country_panel_data <- function(country_code) {
     ) |>
     mutate(
       Period = as.character(Period),
-      BFA1000_1991_2024 = bfa_reference
+      BFA1000_1990_2024 = bfa_reference
     ) |>
     rename(Climate_model = GCM)
   
@@ -53,7 +53,7 @@ make_country_panel_data <- function(country_code) {
     group_by(Period) |>
     summarise(
       predicted_BFA1000 = exp(mean(log_BFA1000, na.rm = TRUE)),
-      BFA1000_1991_2024 = bfa_reference,
+      BFA1000_1990_2024 = bfa_reference,
       .groups = "drop"
     ) |>
     mutate(
@@ -146,7 +146,7 @@ p <- ggplot(
     inherit.aes = FALSE
   ) +
   geom_hline(
-    aes(yintercept = BFA1000_1991_2024, linetype = "Observed\n(1991–2024)\nreference"),
+    aes(yintercept = BFA1000_1990_2024, linetype = "Observed\n(1990–2024)\nreference"),
     data = ens_points |> filter(Period == "1981-2010"),
     color = "#2b2b2b",
     size = 0.8
@@ -169,7 +169,7 @@ p <- ggplot(
   ) +
   scale_linetype_manual(
     values = c(
-      "Observed\n(1991–2024)\nreference" = "dashed",
+      "Observed\n(1990–2024)\nreference" = "dashed",
       "Ensemble trend" = "solid"
     ),
     name = NULL,

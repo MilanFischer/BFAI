@@ -12,7 +12,7 @@ options(
   cli.dynamic = FALSE
 )
 
-start_ID <- 2
+start_ID <- 1
 
 runs <- tidyr::crossing(
   cor_thresh = seq(0.7, 0.95, 0.05),
@@ -28,8 +28,8 @@ runs <- tidyr::crossing(
   grid_ini = c(50), # 50
   grid_race = c(100), # 100
   n_ens_reps = c(20), # 20
-  num_cores_tune = 14,
-  num_cores_plot = 18
+  num_cores_tune = 8,
+  num_cores_plot = 8
 ) |>
   mutate(
     run_ID = start_ID - 1 + row_number(),
@@ -49,7 +49,7 @@ saveRDS(runs, "runs.rds")
 # Launch each run in a fresh R session
 ################################################################################
 
-for (run_i in 1) {
+for (run_i in 1:nrow(runs)) {
   
   message(
     "\n=====================================================\n",

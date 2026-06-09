@@ -251,21 +251,48 @@ run_pipeline <- function(run_i, runs) {
     # Sort by importance
     vip_df <- vip_df[order(-vip_df$Importance), ]
     
-    # Define plot name
-    plot_name <- paste0(out_path, "/feature_importance.png")
+    # Keep original predictor names
+    vip_df$Predictor_original <- vip_df$Predictors
+    
+    # Pretty names only for plotting
+    vip_df$Predictor_label <- vip_df$Predictors |>
+      gsub("_plus_", "+_", x = _) |>
+      gsub("_plus$", "+", x = _) |>
+      gsub("AWD0_40", "AWD0–40", x = _)
     
     # Create plot
-    p <- ggplot(vip_df, aes(x = reorder(Predictors, Importance), y = Importance)) +
-      geom_col() +
+    p <- ggplot(
+      vip_df,
+      aes(x = reorder(Predictor_label, Importance), y = Importance)
+    ) +
+      geom_col(fill = "#1F4E79") +
       coord_flip() +
-      labs(title = "Variable Importance (RFE - Random Forest)",
-           x = "Variable", y = "Importance") +
-      theme_bw()
+      labs(
+        title = "Variable Importance (RFE - Random Forest)",
+        x = NULL,
+        y = "Relative importance score"
+      ) +
+      theme_bw() +
+      theme(
+        plot.title = element_text(size = 16, colour = "black"),
+        axis.title.x = element_text(size = 14, colour = "black"),
+        axis.text.x = element_text(size = 12, colour = "black"),
+        axis.text.y = element_text(size = 12, colour = "black")
+      )
     
-    # Save plot
-    ggsave(plot_name, plot = p, width = 8, height = 6, dpi = 300, device = ragg::agg_png)
+    saveRDS(p, file = paste0(out_path, "/feature_importance.rds"))
     
-    final_cols <- c(target, vip_df$Predictors)
+    ggsave(
+      paste0(out_path, "/feature_importance.png"),
+      plot = p,
+      width = 7,
+      height = 6,
+      dpi = 600,
+      device = ragg::agg_png
+    )
+    
+    # Use original names for modelling
+    final_cols <- c(target, vip_df$Predictor_original)
     
     predictors <- setdiff(final_cols, target)
     

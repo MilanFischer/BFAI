@@ -1,0 +1,7 @@
+# temporary Office files
+~$*.xls
+~$*.xlsx
+
+# generated outputs
+outputs/
+outputs/

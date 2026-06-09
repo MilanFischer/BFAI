@@ -1,18 +1,18 @@
 # BFAI: machine-learning assessment of European burnt forest area
 
 [![R](https://img.shields.io/badge/R-4.5.2-blue.svg)](https://www.r-project.org/)
-[![tidymodels](https://img.shields.io/badge/workflow-tidymodels-blue.svg)](https://www.tidymodels.org/)
+[![workflow](https://img.shields.io/badge/workflow-tidymodels-blue.svg)](https://www.tidymodels.org/)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17311553.svg)](https://doi.org/10.5281/zenodo.17311553)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.17311553-blue.svg)](https://doi.org/10.5281/zenodo.17311553)
 
-This repository contains the R code, input data, and supporting scripts used for the manuscript:
+This repository contains the R code, input data, and workflow used for the manuscript:
 
 > **Machine learning assessment of climate-driven variability in European forest fire burnt areas**  
-> Emil Cienciala, Milan Fischer, Lucie Kudláčková, Markéta Podebradská, Jan Balek, Radka Mašková, Petr Štěpánek, Jana Beranová, and Miroslav Trnka
+> Emil Cienciala, Milan Fischer, Lucie Kudláčková, Markéta Poděbradská, Jan Balek, Radka Mašková, Petr Štěpánek, Jana Beranová, and Miroslav Trnka
 
-The study evaluates whether climate-related fire-weather and drought predictors remain robust drivers of annual burnt forest area across Europe despite substantial changes in fire-management effectiveness. The central response variable is the **Burnt Forest Area Index (BFAI)**, defined as annual burnt forest area per 1000 ha of national forest area.
+The study evaluates whether climate-related fire-weather and drought predictors remain robust drivers of annual burnt forest area across Europe despite substantial changes in fire-management effectiveness. The central response variable is the **Burnt Forest Area Index (BFAI)**, expressed as annual burnt forest area per 1000 ha of national forest area.
 
-The workflow is written in R and follows the modelling philosophy of [`tidymodels`](https://www.tidymodels.org/) and the book [_Tidy Modeling with R_](https://www.tmwr.org/) by Max Kuhn and Julia Silge. The repository is also archived through Zenodo: <https://doi.org/10.5281/zenodo.17311553>.
+The workflow is written in R and follows the modelling philosophy of [`tidymodels`](https://www.tidymodels.org/) and [_Tidy Modeling with R_](https://www.tmwr.org/) by Max Kuhn and Julia Silge. The archived research workflow is available through Zenodo: <https://doi.org/10.5281/zenodo.17311553>.
 
 ---
 
@@ -46,52 +46,115 @@ Key results reported in the manuscript include:
 BFAI/
 ├── README.md
 ├── LICENSE
-├── BFAI_model_MAIN.R
+├── run_all.R
+├── pipeline_worker.R
+├── pipeline_function.R
+├── plot_scenarios_worker.R
 ├── inputs/
+│   ├── BFAI_1990-2024.csv
 │   ├── AnalyticalData2026.csv
+│   ├── BFAI_CZE_avg_indicators.csv
 │   ├── BFAI_inputs.xlsx
 │   ├── InputData2026.xlsx
-│   └── baseline/
-│       ├── *_country.csv
-│       └── *_forest.csv
-├── outputs/
-│   └── summary and selected reproducible output products
-└── src/
-    ├── load_libraries.R
-    ├── files_manage.R
-    ├── colors.R
-    ├── corellation_filter.R
-    ├── boruta.R
-    ├── model_specification.R
-    ├── metafit_ens.R
-    ├── perturbation_audit.R
-    └── post_processing/
-        ├── all_predictions_check.R
-        ├── compare_GCMs.R
-        ├── correlation_matrix.R
-        ├── extract_scenario_ensemble_means.R
-        ├── extract_stacking_coefficients.R
-        ├── plot_scenario_ensemble_means.R
-        ├── select_model.R
-        ├── sensitivity_test.R
-        └── summarize.R
+│   ├── baseline/
+│   │   ├── *_country.csv
+│   │   └── *_forest.csv
+│   ├── scenariomip/
+│   │   └── climate-scenario predictor files
+│   └── scenariomip_50km/
+│       └── higher-resolution scenario predictor files
+├── src/
+│   ├── load_libraries.R
+│   ├── log_message.R
+│   ├── files_manage.R
+│   ├── colors.R
+│   ├── corellation_filter.R
+│   ├── boruta.R
+│   ├── model_specification.R
+│   ├── metafit_ens.R
+│   ├── perturbation_audit.R
+│   └── post_processing/
+│       ├── all_predictions_check.R
+│       ├── compare_GCMs.R
+│       ├── correlation_matrix.R
+│       ├── extract_scenario_ensemble_means.R
+│       ├── extract_stacking_coefficients.R
+│       ├── plot_scenario_ensemble_means.R
+│       ├── select_model.R
+│       ├── sensitivity_test.R
+│       └── summarize.R
+└── outputs/
+    └── generated model outputs, figures, diagnostics, and summaries
 ```
 
-### Main files and folders
+Large generated model objects and scenario outputs are not intended to be tracked in Git. They are created locally under `outputs/` when the workflow is run.
 
-| Path | Purpose |
+---
+
+## Main workflow files
+
+The workflow is organised as a three-level execution cascade:
+
+```text
+run_all.R
+└── pipeline_worker.R
+    └── pipeline_function.R
+        └── src/*.R helper scripts
+```
+
+| Path | Role |
 | --- | --- |
-| `BFAI_model_MAIN.R` | Main modelling script used to run the full analysis. |
-| `inputs/` | Input datasets used by the modelling workflow. |
-| `inputs/baseline/` | Baseline climate-derived country and forest predictor tables. |
-| `src/load_libraries.R` | Loads the R packages required by the workflow. |
-| `src/corellation_filter.R` | Removes strongly correlated predictors before subsequent feature selection. |
-| `src/boruta.R` | Performs Boruta feature selection. |
-| `src/model_specification.R` | Defines the candidate regression algorithms used in the tidymodels workflow. |
-| `src/metafit_ens.R` | Builds stacked ensemble models from tuned base learners. |
-| `src/perturbation_audit.R` | Performs plausibility and robustness checks for scenario predictions. |
-| `src/post_processing/` | Scripts for summaries, model comparison, scenario plots, stacking coefficients, and sensitivity checks. |
-| `outputs/` | Output products. Large generated model objects are intentionally not versioned. |
+| `run_all.R` | Main entry point. Defines the run grid, creates output folders, saves `runs.rds`, and launches each model run in a fresh R session using `callr::rscript()`. |
+| `pipeline_worker.R` | Lightweight worker script. Reads the selected run index from command-line arguments, loads `runs.rds`, sources `pipeline_function.R`, and calls `run_pipeline()`. |
+| `pipeline_function.R` | Core modelling pipeline. Loads libraries and helper functions, reads input data, performs filtering and feature selection, tunes candidate models, builds ensembles, runs robustness checks, and writes outputs. |
+| `plot_scenarios_worker.R` | Worker script for scenario plotting/post-processing tasks. |
+| `src/` | Modular helper scripts used by `pipeline_function.R`. |
+
+This cascade is intentional. Each call from `run_all.R` starts a clean external R session via `callr`, which prevents memory accumulation between model configurations and gives each run a clean workspace. This is important because the workflow creates large tuning objects, fitted models, stacked ensembles, and scenario-prediction objects.
+
+---
+
+## Input data
+
+### Main observed BFAI data
+
+The main observed response data are stored in:
+
+```text
+inputs/BFAI_1990-2024.csv
+```
+
+This file contains annual country-level burnt forest area information used to derive or provide the Burnt Forest Area Index for the analysed period.
+
+Additional input tables include:
+
+```text
+inputs/AnalyticalData2026.csv
+inputs/BFAI_CZE_avg_indicators.csv
+inputs/BFAI_inputs.xlsx
+inputs/InputData2026.xlsx
+```
+
+### Baseline climate and forest predictors
+
+Historical baseline predictors are stored in:
+
+```text
+inputs/baseline/
+```
+
+The pipeline reads the `*_forest.csv` files from this folder and reshapes them into the annual country-level predictor table used for model fitting. The corresponding `*_country.csv` files provide country-scale predictor information.
+
+### Climate-scenario predictors
+
+Scenario predictors are stored in:
+
+```text
+inputs/scenariomip/
+inputs/scenariomip_50km/
+```
+
+These folders contain CMIP6 ScenarioMIP-based climate predictor files used for future BFAI projections. The workflow applies the trained models to scenario data for multiple SSPs, while the manuscript focuses on SSP2-4.5.
 
 ---
 
@@ -103,7 +166,7 @@ The response variable is:
 BFAI = annual burnt forest area / national forest area × 1000
 ```
 
-where BFAI is expressed in ha burnt per kha of forest.
+where BFAI is expressed as ha burnt per kha of forest.
 
 The predictor set combines climate, drought, fuel-moisture, fire-weather, forest-composition, and country-level information. The manuscript describes 18 base climate and land-surface variables aggregated over full-year and seasonal windows, producing 90 climate-related predictors before feature selection. Together with forest composition and country, this gives 94 initial candidate predictors.
 
@@ -116,9 +179,9 @@ Main predictor families include:
 | Vapour pressure deficit | `VPD` | Atmospheric moisture demand derived from temperature and relative humidity. |
 | Soil-water status | `AWR`, `AWP`, `AWD` | Soil drought and water-deficit indicators derived from SoilClim. |
 | Forest composition | conifers, broadleaves, pines | Time-invariant country-level vegetation composition. |
-| Country | categorical predictor | Captures country-specific factors such as management, reporting, land use, and institutional differences. |
+| Country | categorical predictor | Captures country-specific effects such as management, reporting, land use, and institutional differences. |
 
-Seasonal windows include:
+Seasonal aggregation windows include:
 
 - full year;
 - March–October (`MAMJJASO`);
@@ -130,24 +193,79 @@ Seasonal windows include:
 
 ## Modelling workflow
 
-The modelling workflow follows the tidy modelling approach implemented in [`tidymodels`](https://www.tidymodels.org/) and described in [_Tidy Modeling with R_](https://www.tmwr.org/). In particular, the project uses recipes, workflows, model specifications, resampling, tuning, performance metrics, and stacked ensembles.
+The modelling workflow follows the tidy modelling approach implemented in [`tidymodels`](https://www.tidymodels.org/) and described in [_Tidy Modeling with R_](https://www.tmwr.org/). It uses recipes, workflows, model specifications, resampling, tuning, performance metrics, and stacked ensembles.
 
-### 1. Data split
+### 1. Run-grid definition
 
-The annual observations are split into calibration and verification subsets using a repeated 3-year block structure:
+`run_all.R` defines a grid of modelling configurations, including:
+
+- correlation-filter threshold;
+- whether country is used as a predictor;
+- whether meteorological and winter-season predictors are included;
+- grid-search and racing-grid sizes;
+- number of ensemble repetitions;
+- perturbation and scenario-audit settings;
+- number of CPU cores used for tuning and plotting.
+
+Each row in this grid becomes a separate run with its own output folder:
+
+```text
+outputs/out_001/
+outputs/out_002/
+...
+```
+
+### 2. Clean-session execution
+
+For each run, `run_all.R` creates the corresponding output folder and launches:
+
+```r
+callr::rscript(
+  script = "pipeline_worker.R",
+  cmdargs = as.character(run_i),
+  stdout = log_file,
+  stderr = log_file
+)
+```
+
+This means each model run is evaluated in a separate R process. The design reduces cross-run memory leakage and avoids carrying large objects from one configuration into the next.
+
+### 3. Data preparation
+
+Inside `pipeline_function.R`, the workflow:
+
+1. loads helper scripts from `src/`;
+2. reads historical predictors from `inputs/baseline/`;
+3. reads observed BFAI from `inputs/BFAI_1990-2024.csv`;
+4. joins predictors and BFAI by `Country` and `Year`;
+5. removes countries without suitable BFAI data;
+6. cleans missing and infinite values;
+7. prepares the log-transformed modelling target.
+
+The model target is:
+
+```text
+log_BFA1000
+```
+
+which is the natural logarithm of BFAI.
+
+### 4. Calibration and verification split
+
+The annual observations are split using a repeated 3-year block structure:
 
 - first and second years of each 3-year block: calibration;
 - every third year: verification.
 
-The response variable is log-transformed before modelling because BFAI is strongly right-skewed.
+For the 1990–2024 period, this gives a temporally structured split while preserving observations across countries.
 
-### 2. Feature selection
+### 5. Feature selection
 
 The workflow reduces the high-dimensional predictor set in three steps:
 
 1. **Correlation filtering** removes multicollinear predictors.
 2. **Boruta selection** identifies predictors that are consistently more informative than random shadow variables under cross-validation.
-3. **Recursive feature elimination** ranks and retains the final predictor set using Random Forest variable importance.
+3. **Recursive feature elimination** ranks and retains predictors using Random Forest variable importance.
 
 The final predictor set reported in the manuscript included:
 
@@ -164,28 +282,38 @@ FWI_5+_ONDJFM
 FWI_6_ONDJFM
 ```
 
-### 3. Candidate models
+### 6. Candidate models
 
 The workflow evaluates 12 regression algorithms:
 
 | Model family | Implemented models |
 | --- | --- |
-| Linear models | Generalized linear model, Elastic Net |
+| Linear models | Generalized Linear Model, Elastic Net |
 | Flexible regression | Multivariate Adaptive Regression Splines (MARS) |
 | Support vector machines | Linear, polynomial, and radial kernels |
 | Tree-based models | CART, bagged trees, Random Forest, Cubist |
 | Boosting and Bayesian additive models | XGBoost, BART |
 | Neural networks | Multilayer perceptron |
 
-The model specifications are defined in `src/model_specification.R` using tidymodels-compatible engines such as `glmnet`, `nnet`, `earth`, `kernlab`, `rpart`, `ranger`, `xgboost`, `Cubist`, and `dbarts`.
+The model specifications are defined in:
 
-### 4. Tuning and evaluation
+```text
+src/model_specification.R
+```
+
+using tidymodels-compatible model engines such as `glmnet`, `nnet`, `earth`, `kernlab`, `rpart`, `ranger`, `xgboost`, `Cubist`, and `dbarts`.
+
+### 7. Preprocessing strategies
 
 Each candidate model is combined with one or more preprocessing strategies, including:
 
 - no preprocessing;
 - normalization of numerical predictors;
 - polynomial terms and interactions.
+
+When `Country` is used, it is encoded through likelihood encoding using `step_lencode_glm()` rather than one-hot encoding.
+
+### 8. Tuning and evaluation
 
 Hyperparameters are tuned using:
 
@@ -194,7 +322,17 @@ Hyperparameters are tuned using:
 
 Models are evaluated using 10-fold cross-validation on the calibration data and then independently assessed on the verification data. Main metrics include RMSE and coefficient of determination (`R²`).
 
-### 5. Stacked ensemble
+### 9. Robustness and plausibility checks
+
+The workflow includes perturbation and scenario-audit checks implemented through:
+
+```text
+src/perturbation_audit.R
+```
+
+These checks help screen candidate models or ensemble members for unrealistic behaviour under synthetic perturbations and high-end climate-scenario inputs.
+
+### 10. Stacked ensemble
 
 The final ensemble is built using stacked generalization through the `stacks` package. Predictions from tuned base learners are combined using penalized regression. The ensemble procedure is repeated with multiple random seeds to improve stability, and the final ensemble is selected based on calibration RMSE while preserving balanced calibration–verification performance.
 
@@ -202,7 +340,7 @@ The final ensemble is built using stacked generalization through the `stacks` pa
 
 ## Climate-scenario projections
 
-The project applies the trained ensemble model to climate-scenario predictors derived from CMIP6 global climate model simulations. The manuscript focuses on SSP2-4.5.
+The project applies the trained ensemble model to climate-scenario predictors derived from CMIP6 global climate model simulations. The manuscript focuses on SSP2-4.5, although the workflow can process multiple SSPs.
 
 Scenario processing uses the advanced delta-change approach, with a 1985–2014 baseline period and four future 30-year windows:
 
@@ -232,34 +370,100 @@ The analysis was conducted in R 4.5.2. Install the core packages before running 
 
 ```r
 install.packages(c(
-  "tidyverse", "tidymodels", "stacks", "finetune", "yardstick",
-  "recipes", "workflows", "workflowsets", "parsnip", "tune",
-  "Boruta", "caret", "ranger", "randomForest", "xgboost",
-  "Cubist", "earth", "kernlab", "kknn", "nnet", "dbarts",
-  "baguette", "rules", "embed", "vip", "readxl", "yaml",
-  "future", "furrr", "doFuture", "parallel",
-  "ggrepel", "ggtext", "cowplot", "patchwork", "ragg",
-  "RColorBrewer", "gtable", "lme4"
+  "tidyverse",
+  "tidymodels",
+  "stacks",
+  "finetune",
+  "yardstick",
+  "recipes",
+  "workflows",
+  "workflowsets",
+  "parsnip",
+  "tune",
+  "Boruta",
+  "caret",
+  "ranger",
+  "randomForest",
+  "xgboost",
+  "Cubist",
+  "earth",
+  "kernlab",
+  "kknn",
+  "nnet",
+  "dbarts",
+  "baguette",
+  "rules",
+  "embed",
+  "vip",
+  "readxl",
+  "yaml",
+  "future",
+  "furrr",
+  "doFuture",
+  "parallel",
+  "callr",
+  "ggrepel",
+  "ggtext",
+  "cowplot",
+  "patchwork",
+  "ragg",
+  "RColorBrewer",
+  "gtable",
+  "lme4"
 ))
 ```
 
-Then load the project dependencies:
+### 3. Run the full workflow
+
+From the repository root, run:
 
 ```r
-source("src/load_libraries.R")
+source("run_all.R")
 ```
 
-### 3. Run the main workflow
+or from a terminal:
 
-```r
-source("BFAI_model_MAIN.R")
+```bash
+Rscript run_all.R
 ```
 
-Depending on the number of candidate models, tuning settings, and available CPU cores, the full workflow can be computationally demanding. Large generated `.rds` model objects are not intended to be tracked in Git.
+Do **not** run `BFAI_model_MAIN.R`; that file is not the entry point of the current repository structure.
 
-### 4. Post-processing
+The full workflow can be computationally demanding. It performs feature selection, repeated model tuning, racing, ensemble construction, robustness checks, scenario prediction, and post-processing. Runtime depends strongly on the number of configurations in `run_all.R` and on the number of CPU cores assigned to tuning and plotting.
 
-Selected post-processing scripts can be run after the model outputs are available:
+### 4. Inspect logs and outputs
+
+Each run writes outputs to a separate folder, for example:
+
+```text
+outputs/out_001/
+```
+
+The main log file for each run is:
+
+```text
+outputs/out_001/pipeline_log.txt
+```
+
+Typical generated outputs include:
+
+- selected predictor configuration (`config.yml`);
+- feature-importance plots;
+- tuned model results;
+- racing and grid-search results;
+- fitted ensemble objects;
+- perturbation-audit tables;
+- observed-versus-predicted plots;
+- scenario predictions by country and climate model;
+- post-processed summary figures and tables.
+
+Large generated `.rds` model objects should remain outside Git history.
+
+---
+
+## Post-processing
+
+Selected post-processing scripts can be run after model outputs are available:
 
 ```r
 source("src/post_processing/summarize.R")
@@ -267,29 +471,20 @@ source("src/post_processing/extract_stacking_coefficients.R")
 source("src/post_processing/plot_scenario_ensemble_means.R")
 ```
 
----
+Scenario plotting can also use the worker-based structure in:
 
-## Outputs
-
-Typical generated outputs include:
-
-- tuned model results;
-- race and grid-search results;
-- model stacks and ensemble objects;
-- observed-versus-predicted plots;
-- variable-importance figures;
-- scenario projections by country and climate model;
-- summary PDFs and tables for model configurations.
-
-Large generated files such as model objects, tuning objects, and scenario `.rds` files should remain outside Git history. Use local storage, release assets, or external archival services for large derived outputs.
+```text
+plot_scenarios_worker.R
+```
 
 ---
 
 ## Reproducibility notes
 
-- The workflow depends on stochastic procedures including resampling, hyperparameter tuning, Random Forest models, and stacked ensemble construction. Use fixed seeds where exact reproducibility is required.
-- Some outputs can differ slightly across operating systems or package versions, especially for parallel tuning and graphics devices.
-- `ragg` is used for more stable cross-platform rendering of figures.
+- The workflow depends on stochastic procedures including resampling, hyperparameter tuning, Random Forest models, and stacked ensemble construction.
+- Fixed seeds are used where possible, but small numerical differences can occur across operating systems, package versions, and parallel backends.
+- `ragg` is used for stable cross-platform rendering of figures.
+- Large generated files under `outputs/` are intentionally excluded from Git tracking.
 - The repository is designed for scientific reproducibility of the manuscript analysis, not as a general-purpose R package.
 
 ---

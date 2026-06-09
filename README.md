@@ -427,8 +427,6 @@ or from a terminal:
 Rscript run_all.R
 ```
 
-Do **not** run `BFAI_model_MAIN.R`; that file is not the entry point of the current repository structure.
-
 The full workflow can be computationally demanding. It performs feature selection, repeated model tuning, racing, ensemble construction, robustness checks, scenario prediction, and post-processing. Runtime depends strongly on the number of configurations in `run_all.R` and on the number of CPU cores assigned to tuning and plotting.
 
 ### 4. Inspect logs and outputs
@@ -501,19 +499,34 @@ This workflow is based on three pillars:
 
 ## Citation
 
-If you use this repository, please cite the associated manuscript and archived repository. Until the final article DOI is available, cite the repository as:
+If you use this repository, please cite the associated manuscript and software archive.
+
+### Manuscript
+
+Cienciala, E., Fischer, M., Kudláčková, L., Podebradská, M., Balek, J., Mašková, R., Štěpánek, P., Beranová, J., and Trnka, M.
+
+*Machine learning assessment of climate-driven variability in European forest fire burnt areas.*
+
+### Software and data repository
+
+Fischer, M. (2025). *BFAI: machine-learning assessment of European burnt forest area* [Computer software and data].
+
+GitHub repository: <https://github.com/MilanFischer/BFAI>
+
+Zenodo archive: <https://doi.org/10.5281/zenodo.17311553>
+
+### Methodological framework
+
+This repository relies heavily on the **tidymodels** ecosystem and the workflow described in *Tidy Modeling with R*. When appropriate, please also cite:
 
 ```text
-Fischer, M. et al. BFAI: machine-learning assessment of European burnt forest area.
-GitHub repository: https://github.com/MilanFischer/BFAI
-Zenodo DOI: https://doi.org/10.5281/zenodo.17311553
-```
+Kuhn, M., & Wickham, H. (2020).
+tidymodels: a collection of packages for modeling and machine learning using tidyverse principles.
+https://doi.org/10.21105/joss.02543
 
-Please also cite the methodological framework used by the analysis:
-
-```text
-Kuhn, M., & Wickham, H. tidymodels: a collection of packages for modeling and machine learning using tidyverse principles.
-Kuhn, M., & Silge, J. Tidy Modeling with R. https://www.tmwr.org/
+Kuhn, M., & Silge, J. (2022).
+Tidy Modeling with R.
+https://www.tmwr.org/
 ```
 
 ---
@@ -526,4 +539,4 @@ This repository is distributed under the GNU General Public License v3.0. See [`
 
 ## Contact
 
-For questions about the code and reproducibility workflow, please open an issue in this repository or contact the repository maintainer.
+For questions about the code, data processing, or reproducibility workflow, please open an issue in this repository or contact the repository maintainer.

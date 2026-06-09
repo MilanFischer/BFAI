@@ -515,6 +515,8 @@ GitHub repository: <https://github.com/MilanFischer/BFAI>
 
 Zenodo archive: <https://doi.org/10.5281/zenodo.17311553>
 
+---
+
 ### Methodological framework
 
 This repository relies heavily on the **tidymodels** ecosystem and the workflow described in *Tidy Modeling with R*. When appropriate, please also cite:

@@ -3,7 +3,7 @@
 [![R](https://img.shields.io/badge/R-4.5.2-blue.svg)](https://www.r-project.org/)
 [![workflow](https://img.shields.io/badge/workflow-tidymodels-blue.svg)](https://www.tidymodels.org/)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17311553.svg)](https://doi.org/10.5281/zenodo.17311553)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.17311553-blue.svg)](https://doi.org/10.5281/zenodo.17311553)
 
 This repository contains the R code, input data, and workflow used for the manuscript:
 

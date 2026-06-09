@@ -52,17 +52,17 @@ BFAI/
 ├── plot_scenarios_worker.R
 ├── inputs/
 │   ├── BFAI_1990-2024.csv
-│   ├── AnalyticalData2026.csv
-│   ├── BFAI_CZE_avg_indicators.csv
-│   ├── BFAI_inputs.xlsx
-│   ├── InputData2026.xlsx
 │   ├── baseline/
 │   │   ├── *_country.csv
 │   │   └── *_forest.csv
 │   ├── scenariomip/
-│   │   └── climate-scenario predictor files
+│   │   └── <ssp>/<climate_model>/<period>/
+│   │       ├── *_country.csv
+│   │       └── *_forest.csv
 │   └── scenariomip_50km/
-│       └── higher-resolution scenario predictor files
+│       └── <ssp>/<climate_model>/<period>/
+│           ├── *_country.csv
+│           └── *_forest.csv
 ├── src/
 │   ├── load_libraries.R
 │   ├── log_message.R
@@ -126,15 +126,6 @@ inputs/BFAI_1990-2024.csv
 
 This file contains annual country-level burnt forest area information used to derive or provide the Burnt Forest Area Index for the analysed period.
 
-Additional input tables include:
-
-```text
-inputs/AnalyticalData2026.csv
-inputs/BFAI_CZE_avg_indicators.csv
-inputs/BFAI_inputs.xlsx
-inputs/InputData2026.xlsx
-```
-
 ### Baseline climate and forest predictors
 
 Historical baseline predictors are stored in:
@@ -147,14 +138,30 @@ The pipeline reads the `*_forest.csv` files from this folder and reshapes them i
 
 ### Climate-scenario predictors
 
-Scenario predictors are stored in:
+Climate-scenario predictors are stored in:
 
 ```text
 inputs/scenariomip/
 inputs/scenariomip_50km/
 ```
 
-These folders contain CMIP6 ScenarioMIP-based climate predictor files used for future BFAI projections. The workflow applies the trained models to scenario data for multiple SSPs, while the manuscript focuses on SSP2-4.5.
+These folders contain CMIP6 ScenarioMIP-based predictor data used for future BFAI projections.
+
+The scenario data are organised hierarchically by SSP scenario, climate model, and future period:
+
+```text
+inputs/scenariomip/<ssp>/<climate_model>/<period>/
+├── *_country.csv
+└── *_forest.csv
+
+inputs/scenariomip_50km/<ssp>/<climate_model>/<period>/
+├── *_country.csv
+└── *_forest.csv
+```
+
+The workflow automatically traverses this directory structure and applies trained models to all available combinations of SSP scenario, climate model, future period, and country.
+
+The manuscript focuses primarily on SSP2-4.5 projections, although the workflow can process multiple SSP scenarios and climate models.
 
 ---
 
@@ -503,7 +510,7 @@ If you use this repository in scientific work, please cite the associated manusc
 
 ### Manuscript
 
-Cienciala, E., Fischer, M., Kudláčková, L., Podebradská, M., Balek, J., Mašková, R., Štěpánek, P., Beranová, J., and Trnka, M. *Machine learning assessment of climate-driven variability in European forest fire burnt areas.*
+Cienciala, E., Fischer, M., Kudláčková, L., Poděbradská, M., Balek, J., Mašková, R., Štěpánek, P., Beranová, J., and Trnka, M. *Machine learning assessment of climate-driven variability in European forest fire burnt areas.*
 
 ### Software and data repository
 

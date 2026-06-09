@@ -3,7 +3,7 @@
 [![R](https://img.shields.io/badge/R-4.5.2-blue.svg)](https://www.r-project.org/)
 [![workflow](https://img.shields.io/badge/workflow-tidymodels-blue.svg)](https://www.tidymodels.org/)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.17311553-blue.svg)](https://doi.org/10.5281/zenodo.17311553)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17311553.svg)](https://doi.org/10.5281/zenodo.17311553)
 
 This repository contains the R code, input data, and workflow used for the manuscript:
 
@@ -34,7 +34,7 @@ Key results reported in the manuscript include:
 
 - most countries showed stable or declining historical BFAI trends, despite increasingly fire-conducive conditions;
 - a pan-European aggregate break-point around **2014** indicates a shift from a declining to an increasing aggregate BFAI trend;
-- the final stacked ensemble explained approximately **79%** and **80%** of BFAI variance in calibration and verification datasets, respectively;
+- the final stacked ensemble explained a substantial proportion of BFAI variance in both calibration and verification datasets;
 - annual vapour pressure deficit (`VPD_year`), country-specific effects, forest composition, Fire Weather Index variables, and available water deficit variables were among the most influential predictors;
 - SSP2-4.5 scenario projections indicate moderate but consistent increases in BFAI for representative northern, central, and southern European countries.
 
@@ -499,13 +499,11 @@ This workflow is based on three pillars:
 
 ## Citation
 
-If you use this repository, please cite the associated manuscript and software archive.
+If you use this repository in scientific work, please cite the associated manuscript and software archive.
 
 ### Manuscript
 
-Cienciala, E., Fischer, M., Kudláčková, L., Podebradská, M., Balek, J., Mašková, R., Štěpánek, P., Beranová, J., and Trnka, M.
-
-*Machine learning assessment of climate-driven variability in European forest fire burnt areas.*
+Cienciala, E., Fischer, M., Kudláčková, L., Podebradská, M., Balek, J., Mašková, R., Štěpánek, P., Beranová, J., and Trnka, M. *Machine learning assessment of climate-driven variability in European forest fire burnt areas.*
 
 ### Software and data repository
 
@@ -517,7 +515,7 @@ Zenodo archive: <https://doi.org/10.5281/zenodo.17311553>
 
 ---
 
-### Methodological framework
+### Methodological foundations
 
 This repository relies heavily on the **tidymodels** ecosystem and the workflow described in *Tidy Modeling with R*. When appropriate, please also cite:
 
@@ -541,4 +539,4 @@ This repository is distributed under the GNU General Public License v3.0. See [`
 
 ## Contact
 
-For questions about the code, data processing, or reproducibility workflow, please open an issue in this repository or contact the repository maintainer.
+For questions regarding the code, workflow, or reproducibility of the analysis, please open an issue in this repository.
